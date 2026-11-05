@@ -6,7 +6,7 @@ import { extname, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const ROOT = await realpath(fileURLToPath(new URL(".", import.meta.url)));
-const HOST = "127.0.0.1";
+const HOST = "0.0.0.0";
 const PORT = 3030;
 
 const TYPES = new Map([
