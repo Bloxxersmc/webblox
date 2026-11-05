@@ -442,23 +442,37 @@
     } catch {}
   }
 
+  // Keep WebAssembly.Exception details instead of collapsing them to [object Object].
+  const describeRuntimeError = value => {
+    if (window.__webbloxDescribeError) return window.__webbloxDescribeError(value);
+    if (value == null || (typeof value !== 'object' && typeof value !== 'function')) return String(value);
+    let parts = [];
+    try { if (value.name) parts.push('name=' + value.name); } catch {}
+    try { if (value.message) parts.push('message=' + value.message); } catch {}
+    try { if (value.stack) parts.push('stack=' + String(value.stack).slice(0, 1200)); } catch {}
+    return parts.join(' | ') || Object.prototype.toString.call(value);
+  };
   // Also surface uncaught errors and error-level console output in the same on-screen box.
-  window.addEventListener('error', e => { showContext(); noteFailure('JS', 'error', String(e.message || 'error'), (e.filename || '').split('/').pop() + ':' + (e.lineno || '')); });
-  window.addEventListener('unhandledrejection', e => noteFailure('JS', 'promise', String((e.reason && (e.reason.message || e.reason)) || 'rejected'), ''));
+  window.addEventListener('error', e => {
+    showContext();
+    const detail = (e.message || 'error') + ' ' + describeRuntimeError(e.error);
+    noteFailure('JS', 'error', detail, (e.filename || '').split('/').pop() + ':' + (e.lineno || '') + ':' + (e.colno || ''));
+  });
+  window.addEventListener('unhandledrejection', e => noteFailure('JS', 'promise', describeRuntimeError(e.reason), ''));
   // Remember the last few ordinary log lines so a crash report shows what the engine was doing just before it.
   const recentLogs = [];
   let contextShown = false;
   for (const level of ['log', 'warn']) {
     const original = console[level];
     console[level] = function (...args) {
-      try { recentLogs.push(args.map(x => String(x)).join(' ').replace(/\s+/g, ' ').slice(0, 130)); if (recentLogs.length > 12) recentLogs.shift(); } catch {}
+      try { recentLogs.push(args.map(x => describeRuntimeError(x)).join(' ').replace(/\s+/g, ' ').slice(0, 180)); if (recentLogs.length > 12) recentLogs.shift(); } catch {}
       return original.apply(this, args);
     };
   }
   const showContext = () => { if (!contextShown) { contextShown = true; noteFailure('CTX', 'last logs', recentLogs.slice(-10).join('  ||  '), ''); } };
   const consoleError = console.error;
   console.error = function (...args) {
-    try { noteFailure('LOG', 'error', args.map(x => (x && x.message) || String(x)).join(' ').slice(0, 220), ''); } catch {}
+    try { noteFailure('LOG', 'error', args.map(x => describeRuntimeError(x)).join(' ').slice(0, 420), ''); } catch {}
     return consoleError.apply(this, args);
   };
 
@@ -466,10 +480,8 @@
   try {
     const gpuWhy = (Date.now() - Number(sessionStorage.getItem('webblox.webgpuFailedAt') || 0) < 120000) ? sessionStorage.getItem('webblox.webgpuFailed') : '';
     if (gpuWhy) setTimeout(() => noteFailure('GPU', 'webgpu failed, fell back to webgl', gpuWhy, ''), 0);
-    const savedFail = localStorage.getItem('webblox.lastGpuFail');
-    if (savedFail) setTimeout(() => noteFailure('GPU', 'last saved webgpu failure', savedFail, ''), 0);
     const mode = new URLSearchParams(location.search).get('renderer') || (gpuWhy ? 'webgl (fallback)' : 'webgpu (default)');
-    setTimeout(() => noteFailure('BUILD', 'files live', 'index=' + (window.__webbloxIndexBuild || 'OLD') + '  gl-webgpu=' + (window.__webbloxGlBuild || 'OLD') + '  upstream=e', ''), 4000);
+    setTimeout(() => noteFailure('BUILD', 'files live', 'index=' + (window.__webbloxIndexBuild || 'OLD') + '  gl-webgpu=' + (window.__webbloxGlBuild || 'OLD') + '  upstream=wasm-diag-20261105a', ''), 4000);
     setTimeout(() => noteFailure('GPU', 'renderer in use', mode, 'navigator.gpu=' + (navigator.gpu ? 'yes' : 'no')), 0);
   } catch {}
 

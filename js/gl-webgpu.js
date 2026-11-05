@@ -9,9 +9,8 @@
   const MAX_GPU_ERRORS = 200;
   const GRID_INDEX_CAPACITY = 256;
   const MAX_FRAMES_IN_FLIGHT = 2;
-  const REQUIRED_FEATURES = ['rg11b10ufloat-renderable', 'float32-filterable', 'depth32float-stencil8'];
-  let hasBC = true; // false on GPUs without BC (many ARM/Chromebook chips): BC textures are decoded on the CPU to rgba8
-  const OPTIONAL_FEATURES = ['texture-compression-bc', 'float32-blendable', 'texture-compression-bc-sliced-3d', 'texture-formats-tier1', 'timestamp-query', 'depth-clip-control'];
+  const REQUIRED_FEATURES = ['texture-compression-bc', 'rg11b10ufloat-renderable', 'float32-filterable', 'depth32float-stencil8'];
+  const OPTIONAL_FEATURES = ['float32-blendable', 'texture-compression-bc-sliced-3d', 'texture-formats-tier1', 'timestamp-query', 'depth-clip-control'];
   const DEPTH_CLAMP_EXTENSION = 'EXT_depth_clamp';
   const DEPTH_ONLY_PIPELINES = new URLSearchParams(location.search).get('depthonly') !== '0';
 
@@ -38,114 +37,6 @@
     0x8231: ['r8sint', 1], 0x8232: ['r8uint', 1], 0x8239: ['rg16sint', 4], 0x823A: ['rg16uint', 4], 0x8D70: ['rgba32uint', 16], 0x8D82: ['rgba32sint', 16], 0x8D7C: ['rgba8uint', 4], 0x8D8E: ['rgba8sint', 4], 0x822C: ['rg32float', 8], 0x8D62: ['rgba8unorm', 4, 'rgb565'], 0x8056: ['rgba8unorm', 4], 0x8057: ['rgba8unorm', 4],
     0x1908: ['rgba8unorm', 4], 0x8051: ['rgba8unorm', 4, 'rgb'], 0x1907: ['rgba8unorm', 4, 'rgb'],
   };
-
-  // ---- CPU BC decoders (used only when the adapter lacks texture-compression-bc) ----
-  const bcDecode = (name, src, w, h, depth, blockBytes) => {
-    const bw = w >> 2, bh = h >> 2;
-    const out = new Uint8Array(w * h * depth * 4);
-    const px = new Uint8Array(64);
-    const c565 = (v, o, a) => { const r = (v >> 11) & 31, g = (v >> 5) & 63, b = v & 31; a[o] = (r << 3) | (r >> 2); a[o + 1] = (g << 2) | (g >> 4); a[o + 2] = (b << 3) | (b >> 2); };
-    const col = new Uint8Array(16);
-    const decColor = (i, hasAlpha) => {
-      const c0 = src[i] | (src[i + 1] << 8), c1 = src[i + 2] | (src[i + 3] << 8);
-      c565(c0, 0, col); c565(c1, 4, col); col[3] = col[7] = 255;
-      if (c0 > c1 || hasAlpha) {
-        for (let k = 0; k < 3; k++) { col[8 + k] = ((2 * col[k] + col[4 + k]) / 3) | 0; col[12 + k] = ((col[k] + 2 * col[4 + k]) / 3) | 0; }
-        col[11] = col[15] = 255;
-      } else {
-        for (let k = 0; k < 3; k++) { col[8 + k] = (col[k] + col[4 + k]) >> 1; col[12 + k] = 0; }
-        col[11] = 255; col[15] = 0;
-      }
-      const bits = src[i + 4] | (src[i + 5] << 8) | (src[i + 6] << 16) | (src[i + 7] << 24);
-      for (let p = 0; p < 16; p++) { const idx = (bits >>> (p * 2)) & 3; px[p * 4] = col[idx * 4]; px[p * 4 + 1] = col[idx * 4 + 1]; px[p * 4 + 2] = col[idx * 4 + 2]; px[p * 4 + 3] = col[idx * 4 + 3]; }
-    };
-    const alpha8 = new Uint8Array(8), alphaIdx = new Uint8Array(16);
-    const decAlphaBlock = (i, snorm) => {
-      let a0 = src[i], a1 = src[i + 1];
-      if (snorm) { a0 = Math.max(-127, (a0 << 24) >> 24); a1 = Math.max(-127, (a1 << 24) >> 24); }
-      const f = v => snorm ? Math.max(0, Math.min(255, Math.round((v + 127) * 255 / 254))) : v;
-      const v = new Array(8);
-      v[0] = a0; v[1] = a1;
-      if (a0 > a1) for (let k = 1; k < 7; k++) v[k + 1] = ((7 - k) * a0 + k * a1) / 7;
-      else { for (let k = 1; k < 5; k++) v[k + 1] = ((5 - k) * a0 + k * a1) / 5; v[6] = snorm ? -127 : 0; v[7] = snorm ? 127 : 255; }
-      for (let k = 0; k < 8; k++) alpha8[k] = f(Math.round(v[k]));
-      let lo = src[i + 2] | (src[i + 3] << 8) | (src[i + 4] << 16), hi = src[i + 5] | (src[i + 6] << 8) | (src[i + 7] << 16);
-      for (let p = 0; p < 8; p++) { alphaIdx[p] = (lo >> (p * 3)) & 7; alphaIdx[p + 8] = (hi >> (p * 3)) & 7; }
-    };
-    // BC7
-    let bc7 = null;
-    const bc7Init = () => {
-      const P2 = [0xcccc,0x8888,0xeeee,0xecc8,0xc880,0xfeec,0xfec8,0xec80,0xc800,0xffec,0xfe80,0xe800,0xffe8,0xff00,0xfff0,0xf000,0xf710,142,0x7100,0x8ce,140,0x7310,0x3100,0x8cce,0x88c,0x3110,0x6666,0x366c,0x17e8,0xff0,0x718e,0x399c,0xaaaa,0xf0f0,0x5a5a,0x33cc,0x3c3c,0x55aa,0x9696,0xa55a,0x73ce,0x13c8,0x324c,0x3bdc,0x6996,0xc33c,0x9966,0x660,0x272,0x4e4,0x4e40,0x2720,0xc936,0x936c,0x39c6,0x639c,0x9336,0x9cc6,0x817e,0xe718,0xccf0,0xfcc,0x7744,0xee22];
-      const P3 = [0xaa685050,0x6a5a5040,0x5a5a4200,0x5450a0a8,0xa5a50000,0xa0a05050,0x5555a0a0,0x5a5a5050,0xaa550000,0xaa555500,0xaaaa5500,0x90909090,0x94949494,0xa4a4a4a4,0xa9a59450,0x2a0a4250,0xa5945040,0xa425054,0xa5a5a500,0x55a0a0a0,0xa8a85454,0x6a6a4040,0xa4a45000,0x1a1a0500,0x50a4a4,0xaaa59090,0x14696914,0x69691400,0xa08585a0,0xaa821414,0x50a4a450,0x6a5a0200,0xa9a58000,0x5090a0a8,0xa8a09050,0x24242424,0xaa5500,0x24924924,0x24499224,0x50a50a50,0x500aa550,0xaaaa4444,0x66660000,0xa5a0a5a0,0x50a050a0,0x69286928,0x44aaaa44,0x66666600,0xaa444444,0x54a854a8,0x95809580,0x96969600,0xa85454a8,0x80959580,0xaa141414,0x96960000,0xaaaa1414,0xa05050a0,0xa0a5a5a0,0x96000000,0x40804080,0xa9a8a9a8,0xaaaaaa44,0x2a4a5254];
-      const W2 = [0,21,43,64], W3 = [0,9,18,27,37,46,55,64], W4 = [0,4,9,13,17,21,26,30,34,38,43,47,51,55,60,64];
-      // Anchor tables
-      const A2 = [15,15,15,15,15,15,15,15,15,15,15,15,15,15,15,15,15,2,8,2,2,8,8,15,2,8,2,2,8,8,2,2,15,15,6,8,2,8,15,15,2,8,2,2,2,15,15,6,6,2,6,8,15,15,2,2,15,15,15,15,15,2,2,15];
-      const A3a = [3,3,15,15,8,3,15,15,8,8,6,6,6,5,3,3,3,3,8,15,3,3,6,10,5,8,8,6,8,5,15,15,8,15,3,5,6,10,8,15,15,3,15,5,15,15,15,15,3,15,5,5,5,8,5,10,5,10,8,13,15,12,3,3];
-      const A3b = [15,8,8,3,15,15,3,8,15,15,15,15,15,15,15,8,15,8,15,3,15,8,15,8,3,15,6,10,15,15,10,8,15,3,15,10,10,8,9,10,6,15,8,15,3,6,6,8,15,3,15,15,15,15,15,15,15,15,15,15,3,15,15,8];
-      // Mode table: [subsets, partBits, rotBits, idxSelBit, colorBits, alphaBits, pbitKind(0 none,1 endpoint,2 shared), idxBits, idx2Bits]
-      const M = [[3,4,0,0,4,0,1,3,0],[2,6,0,0,6,0,2,3,0],[3,6,0,0,5,0,0,2,0],[2,6,0,0,7,0,1,2,0],[1,0,2,1,5,6,0,2,3],[1,0,2,0,7,8,0,2,2],[1,0,0,0,7,7,1,4,0],[2,6,0,0,5,5,1,2,0]];
-      bc7 = { P2, P3, W2, W3, W4, A2, A3a, A3b, M };
-    };
-    const bc7Block = (i) => {
-      if (!bc7) bc7Init();
-      const { P2, P3, W2, W3, W4, A2, A3a, A3b, M } = bc7;
-      let pos = 0;
-      const rd = n => { let v = 0; for (let k = 0; k < n; k++) { v |= ((src[i + (pos >> 3)] >> (pos & 7)) & 1) << k; pos++; } return v; };
-      let mode = 0; while (mode < 8 && !rd(1)) mode++;
-      if (mode >= 8) { px.fill(0); return; }
-      const [ns, pb, rb, isb, cb, ab, pk, ib, ib2] = M[mode];
-      const part = rd(pb), rot = rb ? rd(rb) : 0, isel = isb ? rd(1) : 0;
-      const nE = ns * 2;
-      const ep = []; for (let e = 0; e < nE; e++) ep.push([0, 0, 0, 255]);
-      for (let c = 0; c < 3; c++) for (let e = 0; e < nE; e++) ep[e][c] = rd(cb);
-      if (ab) for (let e = 0; e < nE; e++) ep[e][3] = rd(ab);
-      const bitsC = cb, bitsA = ab;
-      if (pk === 1) { for (let e = 0; e < nE; e++) { const p = rd(1); for (let c = 0; c < 4; c++) if (c < 3 || ab) ep[e][c] = (ep[e][c] << 1) | p; } }
-      else if (pk === 2) { for (let s = 0; s < ns; s++) { const p = rd(1); for (let e = s * 2; e < s * 2 + 2; e++) for (let c = 0; c < 4; c++) if (c < 3 || ab) ep[e][c] = (ep[e][c] << 1) | p; } }
-      const tc = bitsC + (pk ? 1 : 0), ta = bitsA ? bitsA + (pk ? 1 : 0) : 0;
-      for (let e = 0; e < nE; e++) {
-        for (let c = 0; c < 3; c++) { let v = ep[e][c]; v = (v << (8 - tc)) | (v >> (2 * tc - 8)); ep[e][c] = v & 255; }
-        if (ab) { let v = ep[e][3]; v = (v << (8 - ta)) | (v >> (2 * ta - 8)); ep[e][3] = v & 255; }
-      }
-      const subsetOf = p => ns === 1 ? 0 : ns === 2 ? (P2[part] >> p) & 1 : (P3[part] >> (p * 2)) & 3;
-      const anchor = s => s === 0 ? 0 : ns === 2 ? A2[part] : (s === 1 ? A3a[part] : A3b[part]);
-      const idx = new Uint8Array(16), idx2 = new Uint8Array(16);
-      for (let p = 0; p < 16; p++) { const s = subsetOf(p); const isAnch = p === anchor(s); idx[p] = rd(isAnch ? ib - 1 : ib); }
-      if (ib2) for (let p = 0; p < 16; p++) idx2[p] = rd(p === 0 ? ib2 - 1 : ib2);
-      const wt = n => n === 2 ? W2 : n === 3 ? W3 : W4;
-      for (let p = 0; p < 16; p++) {
-        const s = subsetOf(p), e0 = ep[s * 2], e1 = ep[s * 2 + 1];
-        let ci = idx[p], cbits = ib, ai = ci, abits = ib;
-        if (ib2) { if (isel) { ci = idx2[p]; cbits = ib2; ai = idx[p]; abits = ib; } else { ci = idx[p]; cbits = ib; ai = idx2[p]; abits = ib2; } }
-        const wc = wt(cbits)[ci], wa = wt(abits)[ai];
-        let r = ((64 - wc) * e0[0] + wc * e1[0] + 32) >> 6, g = ((64 - wc) * e0[1] + wc * e1[1] + 32) >> 6, b = ((64 - wc) * e0[2] + wc * e1[2] + 32) >> 6;
-        let a = ab || ib2 ? ((64 - wa) * e0[3] + wa * e1[3] + 32) >> 6 : 255;
-        if (rot === 1) { const t = a; a = r; r = t; } else if (rot === 2) { const t = a; a = g; g = t; } else if (rot === 3) { const t = a; a = b; b = t; }
-        px[p * 4] = r; px[p * 4 + 1] = g; px[p * 4 + 2] = b; px[p * 4 + 3] = a;
-      }
-    };
-    const layerBlocks = bw * bh;
-    for (let z = 0; z < depth; z++) for (let by = 0; by < bh; by++) for (let bx = 0; bx < bw; bx++) {
-      const i = (z * layerBlocks + by * bw + bx) * blockBytes;
-      if (i + blockBytes > src.length) { px.fill(128); }
-      else switch (name) {
-        case 'bc1': decColor(i, false); break;
-        case 'bc2': decColor(i + 8, true); for (let p = 0; p < 16; p++) { const v = (src[i + (p >> 1)] >> ((p & 1) * 4)) & 15; px[p * 4 + 3] = v * 17; } break;
-        case 'bc3': decColor(i + 8, true); decAlphaBlock(i, false); for (let p = 0; p < 16; p++) px[p * 4 + 3] = alpha8[alphaIdx[p]]; break;
-        case 'bc4': case 'bc4s': decAlphaBlock(i, name === 'bc4s'); for (let p = 0; p < 16; p++) { const v = alpha8[alphaIdx[p]]; px[p * 4] = v; px[p * 4 + 1] = 0; px[p * 4 + 2] = 0; px[p * 4 + 3] = 255; } break;
-        case 'bc5': case 'bc5s': { decAlphaBlock(i, name === 'bc5s'); const rv = new Uint8Array(16); for (let p = 0; p < 16; p++) rv[p] = alpha8[alphaIdx[p]]; decAlphaBlock(i + 8, name === 'bc5s'); for (let p = 0; p < 16; p++) { px[p * 4] = rv[p]; px[p * 4 + 1] = alpha8[alphaIdx[p]]; px[p * 4 + 2] = 0; px[p * 4 + 3] = 255; } break; }
-        case 'bc7': bc7Block(i); break;
-        default: for (let p = 0; p < 16; p++) { px[p * 4] = px[p * 4 + 1] = px[p * 4 + 2] = 128; px[p * 4 + 3] = 255; } // bc6h: not supported on the CPU path
-      }
-      for (let p = 0; p < 16; p++) {
-        const o = ((z * h + by * 4 + (p >> 2)) * w + bx * 4 + (p & 3)) * 4;
-        out[o] = px[p * 4]; out[o + 1] = px[p * 4 + 1]; out[o + 2] = px[p * 4 + 2]; out[o + 3] = px[p * 4 + 3];
-      }
-    }
-    return out;
-  };
-  const bcKind = format => format.startsWith('bc1') ? 'bc1' : format.startsWith('bc2') ? 'bc2' : format.startsWith('bc3') ? 'bc3' : format === 'bc4-r-snorm' ? 'bc4s' : format.startsWith('bc4') ? 'bc4' : format === 'bc5-rg-snorm' ? 'bc5s' : format.startsWith('bc5') ? 'bc5' : format.startsWith('bc7') ? 'bc7' : 'bc6h';
-
   const COMPRESSED_FORMATS = {
     0x83F0: ['bc1-rgba-unorm', 8], 0x83F1: ['bc1-rgba-unorm', 8], 0x83F2: ['bc2-rgba-unorm', 16], 0x83F3: ['bc3-rgba-unorm', 16],
     0x8C4C: ['bc1-rgba-unorm-srgb', 8], 0x8C4D: ['bc1-rgba-unorm-srgb', 8], 0x8C4E: ['bc2-rgba-unorm-srgb', 16], 0x8C4F: ['bc3-rgba-unorm-srgb', 16],
@@ -1064,14 +955,13 @@ struct V { @builtin(position) pos: vec4f, @location(0) uv: vec2f };
     allocate(texture, target, formatCode, width, height, depth, levels, compressed) {
       if (texture.gpu) this.retire(texture.gpu);
       this.dropGroups(texture);
-      let format, bytes, block = 1, blockBytes = 0, isDepth = false, hasStencil = false, convert = null, softBC = null;
+      let format, bytes, block = 1, blockBytes = 0, isDepth = false, hasStencil = false, convert = null;
       if (compressed) {
         const entry = COMPRESSED_FORMATS[formatCode];
         if (!entry) this.noteError(`unknown compressed format 0x${formatCode.toString(16)}`);
         [format, blockBytes] = entry || ['bc1-rgba-unorm', 8];
         block = 4;
         bytes = blockBytes;
-        if (!hasBC) { softBC = bcKind(format); format = format.endsWith('srgb') ? 'rgba8unorm-srgb' : 'rgba8unorm'; }
       } else if (DEPTH_FORMATS[formatCode]) {
         [format, hasStencil] = DEPTH_FORMATS[formatCode];
         isDepth = true;
@@ -1096,7 +986,6 @@ struct V { @builtin(position) pos: vec4f, @location(0) uv: vec2f };
       texture.depth = layers;
       texture.levels = count;
       texture.compressed = compressed;
-      texture.softBC = softBC;
       texture.block = block;
       texture.blockBytes = blockBytes;
       texture.bytes = bytes;
@@ -1205,11 +1094,6 @@ struct V { @builtin(position) pos: vec4f, @location(0) uv: vec2f };
       const h = Math.min((height + 3) & ~3, Math.max((levelHeight + 3) & ~3, 4) - origin.y);
       const rows = Math.ceil(h / 4);
       const rowBytes = Math.ceil(w / 4) * texture.blockBytes;
-      if (texture.softBC) {
-        const rgba = bcDecode(texture.softBC, bytes, w, h, depth, texture.blockBytes);
-        this.queue.writeTexture({ texture: texture.gpu, mipLevel: level, origin: [origin.x, origin.y, origin.z] }, rgba, { offset: 0, bytesPerRow: w * 4, rowsPerImage: h }, [w, h, depth]);
-        return;
-      }
       this.queue.writeTexture(
         { texture: texture.gpu, mipLevel: level, origin: [origin.x, origin.y, origin.z] },
         bytes,
@@ -2950,7 +2834,7 @@ struct V { @builtin(position) pos: vec4f, @location(0) uv: vec2f };
   };
 
   const rendererChoice = () => {
-    window.__webbloxGlBuild = 'bcdecode';
+    window.__webbloxGlBuild = 'ttl-wasm-diag';
     const param = new URLSearchParams(location.search).get('renderer');
     if (param) return param;
     try {
@@ -2969,10 +2853,7 @@ struct V { @builtin(position) pos: vec4f, @location(0) uv: vec2f };
     if (!navigator.gpu) throw new Error('WebGPU is not available');
     const adapter = await navigator.gpu.requestAdapter({ powerPreference: 'high-performance' });
     if (!adapter) throw new Error('no WebGPU adapter');
-    const missing = REQUIRED_FEATURES.filter(feature => !adapter.features.has(feature));
-    if (missing.length) throw new Error(`adapter lacks ${missing.join(', ')}`);
-    hasBC = adapter.features.has('texture-compression-bc');
-    if (!hasBC) console.warn('[webgpu] adapter lacks texture-compression-bc: decoding BC textures on the CPU');
+    for (const feature of REQUIRED_FEATURES) if (!adapter.features.has(feature)) throw new Error(`adapter lacks ${feature}`);
     const requiredFeatures = [...REQUIRED_FEATURES, ...OPTIONAL_FEATURES.filter(f => adapter.features.has(f))];
     const requiredLimits = {};
     for (const key of ['minUniformBufferOffsetAlignment', 'maxBindGroups', 'maxBindingsPerBindGroup', 'maxDynamicUniformBuffersPerPipelineLayout', 'maxSampledTexturesPerShaderStage', 'maxSamplersPerShaderStage', 'maxUniformBuffersPerShaderStage', 'maxVertexBuffers', 'maxVertexAttributes', 'maxTextureDimension2D', 'maxTextureDimension3D', 'maxTextureArrayLayers', 'maxBufferSize', 'maxColorAttachments', 'maxInterStageShaderVariables']) {
