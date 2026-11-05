@@ -375,7 +375,9 @@
   }
 
   // Shows why Roblox refused a join right on the page, for browsers where the console is locked.
-  async function reportJoinFailure(status, json, url) {
+  async function reportJoinFailure(status, json, url, body) {
+    let sent = {};
+    try { sent = JSON.parse(new TextDecoder().decode(body)) || {}; } catch {}
     let who = 'unknown';
     try {
       const me = await wisp(SESSION_CHECK_URL, { method: 'GET', headers: spoofNativeUa({ origin: 'https://www.roblox.com', referer: 'https://www.roblox.com/' }) });
@@ -384,7 +386,9 @@
     } catch { who = 'could not check (network problem reaching Roblox)'; }
     const mode = /join-private-game/.test(url) ? 'private server' : /join-game-instance/.test(url) ? 'specific server' : 'normal join';
     const text = 'Join refused. Roblox status: ' + (json && json.status != null ? json.status : r_(status)) +
-      ' | message: ' + ((json && json.message) || 'none') + ' | ' + who + ' | join type: ' + mode;
+      ' | message: ' + ((json && json.message) || 'none') + ' | ' + who + ' | join type: ' + mode +
+      ' | placeId: ' + sent.placeId + ' | gameId: ' + (sent.gameId || 'none') + ' | teleport: ' + !!sent.isTeleport +
+      '\npage: ' + location.href;
     console.log('[gamejoin-failed]', text);
     try {
       let box = document.getElementById('webblox-join-error');
@@ -410,7 +414,7 @@
       hasJoinScript: !!(json && json.joinScript),
       cookies: jarNames(new URL(url).hostname),
     }));
-    if (!(json && json.joinScript)) reportJoinFailure(r.status, json, url);
+    if (!(json && json.joinScript)) reportJoinFailure(r.status, json, url, body);
     if (r.status === 200 && json && json.joinScript && !json.joinScript.gameFqdn) {
       const fqdn = qdmuxFqdn(json.joinScript);
       if (fqdn) {
