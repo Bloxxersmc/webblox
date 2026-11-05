@@ -425,8 +425,8 @@
   const netFailures = [];
   function noteFailure(code, method, where, detail) {
     try {
-      netFailures.push(new Date().toLocaleTimeString() + '  ' + code + '  ' + method + ' ' + where + (detail ? '  ' + String(detail).replace(/\s+/g, ' ').slice(0, 120) : ''));
-      if (netFailures.length > 6) netFailures.shift();
+      netFailures.push(new Date().toLocaleTimeString() + '  ' + code + '  ' + method + ' ' + where + (detail ? '  ' + String(detail).replace(/\s+/g, ' ').slice(0, 900) : ''));
+      if (netFailures.length > 8) netFailures.shift();
       let box = document.getElementById('webblox-net-log');
       if (!box) {
         box = document.createElement('div');
@@ -443,8 +443,19 @@
   }
 
   // Also surface uncaught errors and error-level console output in the same on-screen box.
-  window.addEventListener('error', e => noteFailure('JS', 'error', String(e.message || 'error'), (e.filename || '').split('/').pop() + ':' + (e.lineno || '')));
+  window.addEventListener('error', e => { showContext(); noteFailure('JS', 'error', String(e.message || 'error'), (e.filename || '').split('/').pop() + ':' + (e.lineno || '')); });
   window.addEventListener('unhandledrejection', e => noteFailure('JS', 'promise', String((e.reason && (e.reason.message || e.reason)) || 'rejected'), ''));
+  // Remember the last few ordinary log lines so a crash report shows what the engine was doing just before it.
+  const recentLogs = [];
+  let contextShown = false;
+  for (const level of ['log', 'warn']) {
+    const original = console[level];
+    console[level] = function (...args) {
+      try { recentLogs.push(args.map(x => String(x)).join(' ').replace(/\s+/g, ' ').slice(0, 130)); if (recentLogs.length > 12) recentLogs.shift(); } catch {}
+      return original.apply(this, args);
+    };
+  }
+  const showContext = () => { if (!contextShown) { contextShown = true; noteFailure('CTX', 'last logs', recentLogs.slice(-10).join('  ||  '), ''); } };
   const consoleError = console.error;
   console.error = function (...args) {
     try { noteFailure('LOG', 'error', args.map(x => (x && x.message) || String(x)).join(' ').slice(0, 220), ''); } catch {}

@@ -373,6 +373,10 @@
     };
     const settingsFlags = settings => {
       const flags = {};
+      // ?stock=1 behaves like the original defaults: full 3D resolution, default mesh detail, grass on, full textures, post effects on.
+      if (new URLSearchParams(location.search).has('stock')) {
+        settings = { ...settings, resolution: 100, mesh: -1, grass: true, texture: 100, postfx: true, msaa: '1', distance: 0 };
+      }
       // Texture memory budget. Quarter size unless the texture setting is 100% (or ?stock=1), so heavy games stay inside the browser's memory limit.
       const lean = settings.texture < 100 && !new URLSearchParams(location.search).has('stock');
       flags.FIntRenderForceVideoMemorySize = String(Math.min(2147483647, Math.round((navigator.deviceMemory || 4) * (lean ? 67108864 : 268435456))));
