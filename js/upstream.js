@@ -375,7 +375,8 @@
   }
 
   // Shows why Roblox refused a join right on the page, for browsers where the console is locked.
-  async function reportJoinFailure(status, json, url, body) {
+  async function reportJoin(status, json, url, body) {
+    const ok = !!(json && json.joinScript);
     let sent = {};
     try { sent = JSON.parse(new TextDecoder().decode(body)) || {}; } catch {}
     let who = 'unknown';
@@ -385,20 +386,24 @@
       else { const u = JSON.parse(new TextDecoder().decode(me.body)); who = u.name ? 'signed in as ' + u.name : 'status ' + me.status; }
     } catch { who = 'could not check (network problem reaching Roblox)'; }
     const mode = /join-private-game/.test(url) ? 'private server' : /join-game-instance/.test(url) ? 'specific server' : 'normal join';
-    const text = 'Join refused. Roblox status: ' + (json && json.status != null ? json.status : r_(status)) +
+    let exitIp = 'unknown';
+    try { const ip = await wisp('https://api.ipify.org', { method: 'GET', headers: {} }); exitIp = new TextDecoder().decode(ip.body).trim().slice(0, 64); } catch {}
+    const text = (ok ? 'Join OK. Roblox status: ' : 'Join refused. Roblox status: ') + (json && json.status != null ? json.status : r_(status)) +
       ' | message: ' + ((json && json.message) || 'none') + ' | ' + who + ' | join type: ' + mode +
       ' | placeId: ' + sent.placeId + ' | gameId: ' + (sent.gameId || 'none') + ' | teleport: ' + !!sent.isTeleport +
-      '\npage: ' + location.href;
-    console.log('[gamejoin-failed]', text);
+      '\nrelay exit IP: ' + exitIp + ' | page: ' + location.href;
+    console.log(ok ? '[gamejoin-ok]' : '[gamejoin-failed]', text);
     try {
       let box = document.getElementById('webblox-join-error');
       if (!box) {
         box = document.createElement('div');
         box.id = 'webblox-join-error';
-        box.style.cssText = 'position:fixed;left:8px;right:8px;bottom:8px;z-index:2147483647;background:#300;color:#fff;font:13px/1.4 sans-serif;padding:10px 12px;border-radius:6px;white-space:pre-wrap;word-break:break-word';
+        box.style.cssText = 'position:fixed;left:8px;right:8px;bottom:8px;z-index:2147483647;background:' + (ok ? '#030' : '#300') + ';color:#fff;font:13px/1.4 sans-serif;padding:10px 12px;border-radius:6px;white-space:pre-wrap;word-break:break-word';
         (document.body || document.documentElement).appendChild(box);
       }
+      box.style.background = ok ? '#030' : '#300';
       box.textContent = text;
+      if (ok) setTimeout(() => box.remove(), 30000);
     } catch {}
   }
   const r_ = status => 'HTTP ' + status;
@@ -414,7 +419,7 @@
       hasJoinScript: !!(json && json.joinScript),
       cookies: jarNames(new URL(url).hostname),
     }));
-    if (!(json && json.joinScript)) reportJoinFailure(r.status, json, url, body);
+    reportJoin(r.status, json, url, body);
     if (r.status === 200 && json && json.joinScript && !json.joinScript.gameFqdn) {
       const fqdn = qdmuxFqdn(json.joinScript);
       if (fqdn) {
