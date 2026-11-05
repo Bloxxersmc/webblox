@@ -149,7 +149,7 @@
     const copy = { ...headers };
     if (copy['rbx-user-agent']) {
       copy['rbx-user-agent'] = copy['rbx-user-agent']
-        .replace(/Roblox\/Web\s+\w+\s+Desktop/, 'Roblox/WinInet')
+        .replace(/Roblox\/Web\s+(?:\w+\s+Desktop|Unknown)/, 'Roblox/WinInet')   // Chromebooks report "Unknown" instead of "<OS> Desktop"
         .replace(/\s*Browser\/\S+/, '');
     }
     return copy;
