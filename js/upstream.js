@@ -466,6 +466,8 @@
   try {
     const gpuWhy = (Date.now() - Number(sessionStorage.getItem('webblox.webgpuFailedAt') || 0) < 120000) ? sessionStorage.getItem('webblox.webgpuFailed') : '';
     if (gpuWhy) setTimeout(() => noteFailure('GPU', 'webgpu failed, fell back to webgl', gpuWhy, ''), 0);
+    const savedFail = localStorage.getItem('webblox.lastGpuFail');
+    if (savedFail) setTimeout(() => noteFailure('GPU', 'last saved webgpu failure', savedFail, ''), 0);
     const mode = new URLSearchParams(location.search).get('renderer') || (gpuWhy ? 'webgl (fallback)' : 'webgpu (default)');
     setTimeout(() => noteFailure('BUILD', 'files live', 'index=' + (window.__webbloxIndexBuild || 'OLD') + '  gl-webgpu=' + (window.__webbloxGlBuild || 'OLD') + '  upstream=e', ''), 4000);
     setTimeout(() => noteFailure('GPU', 'renderer in use', mode, 'navigator.gpu=' + (navigator.gpu ? 'yes' : 'no')), 0);
