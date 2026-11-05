@@ -240,7 +240,7 @@ export function leaveFor(url) {
 export const play = placeId => leaveFor(withMode(`/?placeId=${placeId}`));
 function joinWith(placeId, kind, value) {
   document.cookie = `${JOIN_COOKIE}=${placeId}:${kind}:${value}; Path=/; Max-Age=120; SameSite=Strict`;
-  try { sessionStorage.setItem('webblox.launcherJoin', `${placeId}:${kind}:${value}`); } catch {}
+  try { sessionStorage.setItem('webblox.launcherJoin', `${placeId}:${kind}:${value}:${Date.now()}`); } catch {}
   play(placeId);
 }
 export const joinServer = (placeId, serverId) => joinWith(placeId, 'g', serverId);

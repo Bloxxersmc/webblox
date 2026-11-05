@@ -347,14 +347,19 @@
     }
   }
 
-  const LAUNCHER_JOIN = /(?:^|;\s*)launcher_join=(\d+):([gp]):([A-Za-z0-9-]+)/;
+  const LAUNCHER_JOIN = /(?:^|;\s*)launcher_join=(\d+):([gp]):([A-Za-z0-9-]+)(?::(\d+))?/;
+  const LAUNCHER_JOIN_TTL = 120000;   // same lifetime as the launcher_join cookie
 
   function launcherJoin(url, body) {
     // The launcher leaves the chosen server in a cookie, or in sessionStorage when it runs from a file
     // and hands the game to a frame on another origin.
     let saved = '';
     try { saved = sessionStorage.getItem('webblox.launcherJoin') || ''; } catch {}
-    const match = /\/v1\/join-game$/.test(url) && (LAUNCHER_JOIN.exec(document.cookie) || LAUNCHER_JOIN.exec('launcher_join=' + saved));
+    // sessionStorage has no expiry of its own, so a server picked earlier in this tab would otherwise be
+    // applied to every later join of that place (a stale private-server code is rejected as "not authorized").
+    const savedAt = /:(\d+)$/.exec(saved);
+    if (!savedAt || Date.now() - Number(savedAt[1]) > LAUNCHER_JOIN_TTL) saved = '';
+    const match = /\/v1\/join-game$/.test(url) && (LAUNCHER_JOIN.exec(document.cookie) || (saved && LAUNCHER_JOIN.exec('launcher_join=' + saved)));
     if (!match) return { url, body };
     try {
       const parsed = JSON.parse(new TextDecoder().decode(body));
