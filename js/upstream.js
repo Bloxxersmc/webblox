@@ -403,7 +403,9 @@
       if (!box) {
         box = document.createElement('div');
         box.id = 'webblox-join-error';
-        box.style.cssText = 'position:fixed;left:8px;right:8px;bottom:8px;z-index:2147483647;background:' + (ok ? '#030' : '#300') + ';color:#fff;font:13px/1.4 sans-serif;padding:10px 12px;border-radius:6px;white-space:pre-wrap;word-break:break-word';
+        box.style.cssText = 'position:fixed;left:8px;right:8px;bottom:8px;z-index:2147483647;background:' + (ok ? '#030' : '#300') + ';color:#fff;font:13px/1.4 sans-serif;padding:10px 12px;border-radius:6px;white-space:pre-wrap;word-break:break-word;user-select:text;cursor:pointer';
+        box.title = 'Tap to copy';
+        box.addEventListener('click', () => copyBox(box));
         (document.body || document.documentElement).appendChild(box);
       }
       box.style.background = ok ? '#030' : '#300';
@@ -412,6 +414,12 @@
     } catch {}
   }
   const r_ = status => 'HTTP ' + status;
+
+  function copyBox(box) {
+    const text = box.textContent.replace(/^Copied\. /, '');
+    const done = () => { box.textContent = 'Copied. ' + text; };
+    try { navigator.clipboard.writeText(text).then(done, done); } catch { done(); }
+  }
 
   // Shows the most recent failing requests on screen (server errors and relay failures), for when the console is unavailable.
   const netFailures = [];
@@ -423,7 +431,9 @@
       if (!box) {
         box = document.createElement('div');
         box.id = 'webblox-net-log';
-        box.style.cssText = 'position:fixed;left:8px;top:8px;max-width:calc(100% - 16px);z-index:2147483646;background:rgba(40,25,0,.92);color:#fff;font:11px/1.35 monospace;padding:6px 8px;border-radius:6px;white-space:pre-wrap;word-break:break-all;pointer-events:none';
+        box.style.cssText = 'position:fixed;left:8px;top:8px;max-width:calc(100% - 16px);z-index:2147483646;background:rgba(40,25,0,.92);color:#fff;font:11px/1.35 monospace;padding:6px 8px;border-radius:6px;white-space:pre-wrap;word-break:break-all;user-select:text;cursor:pointer';
+        box.title = 'Tap to copy';
+        box.addEventListener('click', () => copyBox(box));
         (document.body || document.documentElement).appendChild(box);
       }
       box.textContent = 'Failed requests (newest last):\n' + netFailures.join('\n');
