@@ -1,0 +1,281 @@
+@font-face {
+  font-family: 'Source Sans 2014';
+  src: url('loader-2016/SourceSansPro-Regular.ttf') format('truetype');
+  font-weight: 400;
+  font-display: block;
+}
+
+@font-face {
+  font-family: 'Source Sans 2014';
+  src: url('loader-2016/SourceSansPro-Bold.ttf') format('truetype');
+  font-weight: 700;
+  font-display: block;
+}
+
+html[data-loader='2014'] #loading-overlay {
+  background: none;
+  pointer-events: none;
+  transition: none;
+}
+
+html[data-loader='2014'] #loading-overlay > :not(.loading-error-panel) {
+  display: none;
+}
+
+html[data-loader='2014'] #loading-overlay.tab-lock-contended #status {
+  display: block;
+}
+
+html[data-loader='2014'] #loading-overlay.loading-failed .loading-error-panel:not([hidden]) {
+  position: fixed;
+  top: 0;
+  left: 25%;
+  display: block;
+  width: 50%;
+  min-height: 0;
+  max-height: none;
+  height: 80px;
+  box-sizing: border-box;
+  padding: 5px;
+  background: #fd4448;
+  animation: none;
+}
+
+html[data-loader='2014'] .loading-error-header,
+html[data-loader='2014'] .loading-error-divider,
+html[data-loader='2014'] #loading-error-leave {
+  display: none;
+}
+
+html[data-loader='2014'] .loading-error-body {
+  display: block;
+  height: 100%;
+  min-height: 0;
+  padding: 0;
+}
+
+html[data-loader='2014'] .loading-error-copy {
+  display: flex;
+  height: 100%;
+  align-items: center;
+  justify-content: center;
+  overflow: visible;
+  color: #fff;
+  font: 400 15.1154px / 18px 'Source Sans 2014', sans-serif;
+  text-align: center;
+}
+
+html[data-loader='2014'] #loading-error-message,
+html[data-loader='2014'] #loading-error-code {
+  display: inline;
+}
+
+#loader-2014 {
+  position: fixed;
+  z-index: 9;
+  inset: 0;
+  overflow: hidden;
+  background: #232326;
+  color: #fff;
+  font-family: 'Source Sans 2014', sans-serif;
+  font-kerning: normal;
+  font-weight: 400;
+}
+
+#loader-2014 [hidden] {
+  display: none !important;
+}
+
+.l14-background {
+  position: absolute;
+  z-index: 2;
+  top: 0;
+  left: 0;
+  width: 150%;
+  height: 150%;
+  background: url('loader-2014/loadingTexture.png') center / 100% 100% no-repeat;
+  transform: translateX(-33.3333%);
+}
+
+.l14-vignette {
+  position: absolute;
+  z-index: 3;
+  inset: 0;
+  background: url('loader-2014/loadingvignette.png') center / 100% 100% no-repeat;
+}
+
+.l14-top {
+  position: absolute;
+  z-index: 5;
+  top: -205px;
+  left: -220px;
+  width: 1000px;
+  height: 220px;
+  background: #3d3d43;
+  outline: 3px solid #767681;
+  rotate: -10deg;
+}
+
+.l14-logo {
+  position: absolute;
+  top: 140px;
+  left: 214px;
+  width: 128px;
+  height: 128px;
+  background: url('loader-2014/robloxlogo.png') center / 100% 100% no-repeat;
+  rotate: 2deg;
+}
+
+.l14-powered {
+  position: absolute;
+  top: 30px;
+  left: 4px;
+  width: 80px;
+  height: 18px;
+  font-size: 15.1154px;
+  line-height: 18px;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.l14-bottom {
+  position: absolute;
+  z-index: 5;
+  left: 0;
+  width: 100%;
+}
+
+.l14-bottom-actual {
+  position: absolute;
+  top: 0;
+  width: 100%;
+  height: 100%;
+  background: #3d3d43;
+  outline: 3px solid #767681;
+}
+
+.l14-text-container {
+  position: absolute;
+  z-index: 8;
+  top: 5px;
+  left: -5px;
+  width: 100%;
+  height: 100%;
+}
+
+#loader-2014 .l14-text {
+  all: unset;
+  position: absolute;
+  top: 0;
+  right: 0;
+  display: block;
+  margin-top: 0.5px;
+  color: #d9dae7;
+  text-align: right;
+  text-shadow: -1px -1px 0 #4b4c55, 1px -1px 0 #4b4c55, -1px 1px 0 #4b4c55, 1px 1px 0 #4b4c55;
+  white-space: nowrap;
+}
+
+#loader-2014 .l14-regular {
+  color: #bec0d4;
+  font-weight: 400;
+}
+
+#loader-2014 .l14-bold {
+  font-weight: 700;
+}
+
+#loader-2014:not(.l14-ready) #loading-experience-title {
+  visibility: hidden;
+}
+
+.l14-block {
+  position: absolute;
+  z-index: 5;
+  top: 0;
+  left: 0;
+  background: #232326;
+}
+
+.l14-thumbnail {
+  position: absolute;
+  z-index: 8;
+  background: #000;
+  outline: 4px solid #767681;
+}
+
+.l14-thumbnail-image {
+  position: absolute;
+  z-index: 8;
+  inset: 0;
+  background: #a3a2a5;
+  outline: 3px solid #4b4c55;
+}
+
+#loader-2014 #loading-background-image {
+  all: unset;
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.l14-stats {
+  position: absolute;
+  z-index: 7;
+  top: 100%;
+  left: 20px;
+  display: grid;
+  width: calc(100% - 40px);
+  height: 40px;
+  grid-template-columns: repeat(4, 1fr);
+  background: #3d3d43;
+  outline: 2px solid #767681;
+}
+
+.l14-stat {
+  position: relative;
+  height: 30px;
+  margin-top: 5px;
+  color: #bec0d4;
+  font-size: 11.9332px;
+  font-weight: 700;
+  line-height: 14px;
+  text-align: center;
+  text-shadow: -1px -1px 0 #4b4c55, 1px -1px 0 #4b4c55, -1px 1px 0 #4b4c55, 1px 1px 0 #4b4c55;
+}
+
+.l14-stat-label {
+  position: absolute;
+  top: 0;
+  width: 100%;
+}
+
+.l14-stat-value {
+  position: absolute;
+  bottom: 0;
+  width: 100%;
+}
+
+.l14-close {
+  position: absolute;
+  z-index: 10;
+  top: 5px;
+  right: 5px;
+  width: 22px;
+  height: 22px;
+}
+
+#loader-2014 #loading-cancel {
+  all: unset;
+  display: block;
+  width: 22px;
+  height: 22px;
+  background: url('loader-2014/CloseButton.png') center / 100% 100% no-repeat;
+  cursor: pointer;
+}
+
+#loader-2014 #loading-cancel:focus-visible {
+  outline: 2px solid #fff;
+  outline-offset: 2px;
+}

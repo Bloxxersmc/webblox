@@ -1,0 +1,701 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <script>
+    (function () {
+      var scheme = matchMedia('(prefers-color-scheme: dark)');
+      var write = function () {
+        var M = window.Module;
+        var heap = M && (M.HEAP32 || (M.wasmMemory && new Int32Array(M.wasmMemory.buffer)));
+        if (!heap) return false;
+        heap[24207536 >> 2] = scheme.matches ? 2 : 1;
+        return true;
+      };
+      var timer = setInterval(function () {
+        if (write()) clearInterval(timer);
+      }, 20);
+      var stage = '';
+      var pending = false;
+      var onLauncher = function () { return /LuaApp$/.test(stage); };
+      ['log', 'info', 'warn', 'error'].forEach(function (level) {
+        var original = console[level];
+        console[level] = function () {
+          var match = typeof arguments[0] === 'string' && arguments[0].match(/setStage: \(stage:([A-Za-z]+)\)/);
+          if (match) {
+            stage = match[1];
+            if (pending && onLauncher()) location.reload();
+          }
+          return original.apply(console, arguments);
+        };
+      });
+      scheme.addEventListener('change', function () {
+        write();
+        if (onLauncher()) location.reload();
+        else pending = true;
+      });
+    })();
+  </script>
+  <script>
+    (function () {
+      var q = new URLSearchParams(location.search).get('mode');
+      var server = !!window.WEBLOX_SERVER;
+      var mode = server ? 'node' : 'wisp';
+      if (q === 'wisp') mode = 'wisp';
+      else if (q === 'node') {
+        if (server) mode = 'node';
+        else console.warn('[local] ?mode=node needs the Node server; serving from a static host, so wisp it is');
+      }
+      window.WEBLOX_MODE = mode;
+      var opened = new URLSearchParams(location.search);
+      if (mode === 'wisp' && !opened.has('placeId') && !opened.has('launcher') && !opened.has('flag')) {
+        window.stop();
+        location.replace('/launcher/' + location.search + location.hash);
+        return;
+      }
+      var framePrefix = mode === 'node' ? '/__proxy__/' : '/__frame__/';
+      window.__webbloxWebViewUrl = function (url) {
+        return /^https?:\/\//i.test(url) ? location.origin + framePrefix + url : url;
+      };
+      document.documentElement.setAttribute('data-mode', mode);
+      try { localStorage.removeItem('webblox.mode'); } catch (e) {}
+      window.webbloxMode = function (next) {
+        var url = new URL(location.href);
+        url.searchParams.set('mode', next === 'node' ? 'node' : 'wisp');
+        location.href = url.toString();
+      };
+    })();
+  </script>
+  <script>
+    window._tl=[];
+    (function(){
+      const keep=/transport|relay|connect|channel|raknet|join|flags|webflags|selectedtransport|whip|webrtc|local-relay|ch\d|gamejoin|failure|disconnect|kick|netstack|rbxtransport|forward|status|httpresponse|cors|wasm-timing|loadingscreen/i;
+      ['log','warn','error'].forEach(l=>{const o=console[l];console[l]=function(...a){
+        if(window._tl.length<4000){
+          let m='';
+          try{for(let i=0;i<a.length;i++){const x=a[i];m+=(typeof x==='string'?x:String(x))+' ';}}catch{}
+          if(keep.test(m)) window._tl.push('['+l+'] '+m);
+        }
+        o.apply(console,a);
+      };});
+    })();
+  </script>
+  <script>
+    (function(){
+      if (window.WEBLOX_MODE !== 'node') return;
+      var origin = location.origin;
+      var proxyPrefix = origin + '/__proxy__/';
+
+      function isCrossOrigin(url) {
+        if (!url) return false;
+        try {
+          if (!/^https?:\/\//i.test(url)) return false;
+          return new URL(url).origin !== origin;
+        } catch { return false; }
+      }
+
+      var _xhrOpen = XMLHttpRequest.prototype.open;
+      XMLHttpRequest.prototype.open = function(method, url) {
+        if (typeof url === 'string' && isCrossOrigin(url)) {
+          arguments[1] = proxyPrefix + url;
+        }
+        return _xhrOpen.apply(this, arguments);
+      };
+
+      var _fetch = window.fetch;
+      window.fetch = function(input, init) {
+        var url = typeof input === 'string' ? input : (input && input.url);
+        if (typeof url === 'string' && isCrossOrigin(url)) {
+          var newUrl = proxyPrefix + url;
+          if (typeof input === 'string') {
+            arguments[0] = newUrl;
+          } else if (input && typeof input === 'object') {
+            arguments[0] = new Request(newUrl, input);
+          }
+        }
+        return _fetch.apply(this, arguments);
+      };
+
+      console.log('[local] XHR/fetch interceptor active — cross-origin requests will be proxied');
+    })();
+  </script>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>WebBlox</title>
+  <link rel="icon" type="image/svg+xml" href="/assets/favicon.svg" />
+  <style>
+    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { width: 100%; height: 100%; overflow: hidden; background: #18191c; }
+    #input-container {
+      position: absolute; z-index: -100; top: 0; left: -1000px;
+      display: flex; justify-content: flex-start;
+      border: none; outline: none;
+    }
+    #input-input, #input-textarea {
+      display: none; margin: 0; padding: 0;
+      border: none; outline: none; resize: none;
+      background: transparent !important;
+    }
+    #input-textarea { max-height: 100%; overflow: hidden; field-sizing: content; }
+    .emscripten_border { width: 100vw; height: 100vh; position: relative; }
+    canvas.emscripten { display: block; width: 100%; height: 100%; background-color: #000; outline: none; cursor: none; }
+    canvas.emscripten:focus, canvas.emscripten:focus-visible { outline: none; }
+    #input-container, #input-input, #input-textarea { cursor: none; }
+    canvas.fullscreencanvas { width: 100vw; height: 100vh; }
+    canvas.mobilecanvas { width: 100vw; height: 100vh; touch-action: none; }
+    canvas.tab-lock-contended { filter: blur(4px); pointer-events: none; }
+    #quick-login-notice {
+      position: fixed; left: 50%; bottom: 24px; z-index: 1000; transform: translateX(-50%);
+      width: calc(100% - 32px); max-width: 520px; padding: 12px 16px; border-radius: 8px;
+      background: rgba(25, 27, 29, 0.94); color: #fff; box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
+      font: 14px/1.4 'Builder Sans', system-ui, sans-serif; pointer-events: none;
+    }
+    #quick-login-notice[hidden] { display: none; }
+    #quick-login-notice p + p { margin-top: 6px; color: #bdbebe; }
+
+    @font-face {
+      font-family: 'Builder Sans';
+      src: url('/assets/loading/BuilderSans-Regular.otf') format('opentype');
+      font-weight: 400;
+    }
+    @font-face {
+      font-family: 'Builder Sans';
+      src: url('/assets/loading/BuilderSans-Medium.otf') format('opentype');
+      font-weight: 500;
+    }
+    @font-face {
+      font-family: 'Builder Sans';
+      src: url('/assets/loading/BuilderSans-Bold.otf') format('opentype');
+      font-weight: 700;
+    }
+  </style>
+  <link rel="stylesheet" href="/launcher/roblox-loader.css">
+  <link rel="stylesheet" href="/launcher/tilt-loader.css">
+  <link rel="stylesheet" href="/launcher/loader-2016.css">
+  <link rel="stylesheet" href="/launcher/loader-2020.css">
+  <link rel="stylesheet" href="/launcher/loader-2014.css">
+  <link rel="stylesheet" href="/launcher/loader-client.css">
+  <script>
+    (() => {
+      const root = document.documentElement;
+      const variants = {
+        tilt: ['standard', 'pioneer'],
+        classic: ['web', 'client-2023', 'client-2022'],
+        2014: ['standard'],
+        2016: ['standard', 'console'],
+        2020: ['thumbnail', 'icon', 'white'],
+      };
+      root.dataset.loader = 'tilt';
+      root.dataset.loaderVariant = variants.tilt[0];
+      try {
+        const saved = localStorage.getItem('webblox.launcher.loader');
+        const loader = variants[saved] ? saved : 'tilt';
+        const variant = localStorage.getItem('webblox.launcher.loader' + loader);
+        root.dataset.loader = loader;
+        root.dataset.loaderVariant = variants[loader].includes(variant) ? variant : variants[loader][0];
+        const era = localStorage.getItem('webblox.launcher.uiEra');
+        document.cookie = era && /^[a-z0-9-]+$/.test(era)
+          ? `webblox_ui_era=${era}; Path=/; SameSite=Strict`
+          : 'webblox_ui_era=; Path=/; Max-Age=0; SameSite=Strict';
+      } catch (e) {}
+    })();
+  </script>
+</head>
+<body>
+  <div id="input-container">
+    <textarea id="input-textarea" autocapitalize="off"></textarea>
+    <input id="input-input" autocapitalize="off" />
+  </div>
+
+  <div class="emscripten_border">
+    <canvas class="emscripten" id="canvas" tabindex="-1"></canvas>
+
+    <div id="loading-overlay" role="dialog" aria-label="Loading WebBlox" aria-busy="true">
+      <div class="loading-background" aria-hidden="true">
+        <img id="loading-background-image" alt="" crossorigin="anonymous" />
+      </div>
+      <div class="loading-dark-gradient" aria-hidden="true"></div>
+
+      <section class="loading-info-card" aria-labelledby="loading-experience-title">
+        <div class="loading-emblem" aria-hidden="true">
+          <div class="loading-wordmark">
+            <div class="loading-mark">
+              <svg viewBox="157 157 710 710" xmlns="http://www.w3.org/2000/svg"><path fill="currentColor" fill-rule="evenodd" d="M307.201 157.281L157.281 716.799L716.799 866.719L866.719 307.201L307.201 157.281ZM569.242 611.157L412.893 569.242L454.807 412.893L611.219 454.807L569.242 611.157Z"/></svg>
+            </div>
+          </div>
+          <div id="loading-icon-shell">
+            <img id="loading-experience-icon" alt="" crossorigin="anonymous" />
+          </div>
+        </div>
+        <h1 id="loading-experience-title">Joining experience</h1>
+        <div class="loading-creator-line">
+          <span id="loading-experience-creator" hidden></span>
+          <span id="loading-verified-badge" role="img" aria-label="Verified creator" title="Verified creator" hidden></span>
+        </div>
+      </section>
+
+      <section class="loading-error-panel" role="alertdialog" aria-modal="true"
+               aria-labelledby="loading-error-title" aria-describedby="loading-error-message loading-error-code" hidden>
+        <header class="loading-error-header">
+          <h1 id="loading-error-title">Join Error</h1>
+        </header>
+        <div class="loading-error-divider" aria-hidden="true"></div>
+        <div class="loading-error-body">
+          <div class="loading-error-copy">
+            <p id="loading-error-message"></p>
+            <p id="loading-error-code"></p>
+          </div>
+          <button id="loading-error-leave" type="button">Leave</button>
+        </div>
+      </section>
+
+      <div class="loading-status-spinner" aria-hidden="true"></div><button id="loading-cancel" type="button" aria-label="Cancel loading" title="Cancel"></button><div class="loading-progress" aria-hidden="true"><span id="loading-progress-fill"></span></div>
+      <div id="status" role="status" aria-live="polite">Preparing WebBlox…</div>
+    </div>
+    <script>
+      (() => {
+        const status = document.getElementById('status');
+        const bar = document.querySelector('.loading-progress');
+        const fill = document.getElementById('loading-progress-fill');
+        const sync = () => {
+          const value = Number(status.getAttribute('aria-valuenow'));
+          const known = status.hasAttribute('aria-valuenow') && Number.isFinite(value);
+          bar.classList.toggle('is-determinate', known);
+          fill.style.width = known ? Math.max(2, Math.min(100, value)) + '%' : '';
+        };
+        new MutationObserver(sync).observe(status, { attributes: true, attributeFilter: ['aria-valuenow'] });
+
+        window.__webbloxImageUrl = url => window.WEBLOX_MODE === 'node' && /^https?:\/\//.test(url)
+          ? location.origin + '/__proxy__/' + url
+          : url;
+
+        window.__webbloxExit = () => {
+          const current = new URLSearchParams(location.search);
+          const next = new URLSearchParams();
+          if (current.get('launcher') === 'roblox') next.set('launcher', 'roblox');
+          for (const name of ['mode', 'wisp', 'flagset']) if (current.has(name)) next.set(name, current.get(name));
+          const query = next.toString();
+          location.replace(query ? '/?' + query : '/');
+        };
+      })();
+    </script>
+    <script src="/launcher/tilt-loader.js"></script>
+    <script src="/launcher/loader-2016.js"></script>
+    <script src="/launcher/loader-2020.js"></script>
+    <script src="/launcher/loader-2014.js"></script>
+    <script src="/launcher/loader-client.js"></script>
+  </div>
+
+  <div class="emscripten" hidden>
+    <span id="server"></span>
+    <span id="proxyenabled"></span>
+  </div>
+
+  <script src="/js/mouse-capture.js"></script>
+  <script src="/js/gl-webgpu-key.js"></script>
+  <script src="/js/fullbright.js"></script>
+  <script src="/js/gl-webgpu.js"></script>
+  <script src="/js/gl-ops.js"></script>
+  <script src="/js/gl-bridge.js"></script>
+  <script src="/js/gl-trace.js"></script>
+  <script src="/js/perf.js"></script>
+  <script src="/js/gl-origin.js"></script>
+  <script src="/js/vertex-state.js"></script>
+  <script src="/js/ubo-stream.js"></script>
+  <script src="/js/light-grid.js"></script>
+  <script src="/js/shaders.js"></script>
+
+  <script>
+    (() => {
+      const RETRY_KEY = 'webblox.joinRetries';
+      const MAX_RETRIES = 3;
+      const STABLE_MS = 90000;
+      const retry = () => {
+        const used = Number(sessionStorage.getItem(RETRY_KEY) || 0);
+        if (used >= MAX_RETRIES) return;
+        sessionStorage.setItem(RETRY_KEY, String(used + 1));
+        console.warn(`[local] Could not reach the game server, rejoining (${used + 1} of ${MAX_RETRIES})`);
+        setTimeout(() => location.reload(), 1500 * (used + 1));
+      };
+      const warn = console.warn;
+      let retrying = false;
+      console.warn = function (...args) {
+        if (!retrying && typeof args[0] === 'string' && args[0].includes('Failed to start network client')) {
+          retrying = true;
+          retry();
+        }
+        return warn.apply(this, args);
+      };
+      setTimeout(() => {
+        if (!retrying) sessionStorage.removeItem(RETRY_KEY);
+      }, STABLE_MS);
+    })();
+
+    const SETTINGS_KEY = 'webblox.settings';
+    const SETTINGS_VERSION = 2;
+    const DEFAULT_SETTINGS = { v: SETTINGS_VERSION, fps: 60, resolution: 100, mesh: -1, msaa: '1', grass: true, ui: 'sharp', distance: 0, quality: -1, renderer: 'webgpu', fullbright: false };
+    const PERFORMANCE_PRESET = { fps: 60, resolution: 75, mesh: 0, msaa: '1', grass: false, ui: 'standard' };
+    const FULL_RESOLUTION = 200;
+    const interfaceScale = settings => {
+      const dpr = window.devicePixelRatio || 1;
+      if (settings.resolution === FULL_RESOLUTION) return dpr >= 2 ? 1.99 / dpr : 1;
+      return settings.ui === 'standard' && dpr > 1 ? 1 / dpr : 1;
+    };
+    const starWidth = settings => {
+      const dpr = window.devicePixelRatio || 1;
+      const forced = parseFloat(new URLSearchParams(location.search).get('renderScale'));
+      const ratio = dpr * (forced > 0 ? forced : interfaceScale(settings));
+      const scene = ratio >= 2 ? ratio / 2 : ratio;
+      const dynamic = settings.resolution > 0 && settings.resolution < 100 ? settings.resolution / 100 : 1;
+      return Math.max(1, 2 * scene * dynamic / dpr);
+    };
+    const VIEW_DISTANCE_FLAGS = [
+      null,
+      { DFIntFRMFinalDistanceMaxStuds: '2000', DFIntFRMFinalDistanceMultiplyHundredths: '250' },
+      { DFIntFRMFinalDistanceMaxStuds: '3000', DFIntFRMFinalDistanceMultiplyHundredths: '400', DFIntFRMFinalDistanceAddStuds: '500' },
+    ];
+    const migrateSettings = stored => {
+      if (stored.v === SETTINGS_VERSION) return stored;
+      const oldPerformance = stored.resolution === 50 && stored.mesh === 0 && stored.msaa === '1' && stored.grass === false;
+      const next = oldPerformance ? { ...stored, ...PERFORMANCE_PRESET } : { ...stored, resolution: 100, msaa: stored.msaa === '' ? '1' : stored.msaa };
+      next.v = SETTINGS_VERSION;
+      try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(next)); } catch (e) {}
+      return next;
+    };
+    const loadSettings = () => {
+      let stored = {};
+      try { stored = JSON.parse(localStorage.getItem(SETTINGS_KEY)) || {}; } catch (e) {}
+      if (Object.keys(stored).length) stored = migrateSettings(stored);
+      const settings = { ...DEFAULT_SETTINGS };
+      for (const key of Object.keys(settings)) {
+        if (typeof stored[key] === typeof settings[key]) settings[key] = stored[key];
+      }
+      return settings;
+    };
+    const settingsFlags = settings => {
+      const flags = {};
+      flags.FIntRenderForceVideoMemorySize = String(Math.min(2147483647, Math.round((navigator.deviceMemory || 4) * 268435456)));
+      Object.assign(flags, VIEW_DISTANCE_FLAGS[settings.distance] || {});
+      if (settings.resolution > 0 && settings.resolution < 100) {
+        const dpr = (window.devicePixelRatio || 1) * interfaceScale(settings);
+        const pixels = innerWidth * dpr * innerHeight * dpr;
+        flags.DFIntDebugDynamicRenderKiloPixels = String(Math.max(1, Math.round(pixels * (settings.resolution / 100) ** 2 / 1000)));
+      }
+      if (settings.mesh >= 0) {
+        ['', 'L12', 'L23', 'L34'].forEach((level, i) => {
+          flags['DFIntCSGLevelOfDetailSwitchingDistance' + level] = String((Math.min(3, Math.max(0, settings.mesh - i)) + 1) * 250);
+        });
+      }
+      if (settings.msaa) flags.FIntDebugForceMSAASamples = settings.msaa;
+      if (!settings.grass) {
+        flags.FIntFRMMinGrassDistance = '0';
+        flags.FIntFRMMaxGrassDistance = '0';
+      }
+      return flags;
+    };
+
+    const fetchWithoutSettings = window.fetch;
+    const FLAG_SETTINGS_URL = /\/v2\/settings\/application\/WebClientApp(\/bucket\/[^?]*)?(\?|$)/;
+    const IXP_KEY = 'rbxIxpSettings.v1';
+    const FLAG_SET_NAME = /^[a-z0-9][a-z0-9-]{0,40}$/;
+    const flagSetName = () => {
+      const name = new URLSearchParams(location.search).get('flagset');
+      return name && FLAG_SET_NAME.test(name) ? name : 'pinned';
+    };
+    const loadFlagSet = async name => {
+      try {
+        const res = await fetchWithoutSettings(name === 'pinned' ? '/engine/PinnedFlags.json' : `/__flagset/${name}.json`, { cache: 'no-cache' });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const set = await res.json();
+        if (!set || !set.applicationSettings || typeof set.applicationSettings !== 'object') throw new Error('it has no applicationSettings');
+        if (set.engine !== window.__webbloxEngineVersion) throw new Error(`it was made for ${set.engine}`);
+        return set;
+      } catch (err) {
+        console.warn(`[flags] Skipping the ${name} flag set: ${err.message}`);
+        return null;
+      }
+    };
+    const liveFlags = async (self, args) => {
+      try {
+        const res = await fetchWithoutSettings.apply(self, args);
+        if (res.ok) return (await res.json()).applicationSettings || {};
+        console.warn(`[flags] Roblox's flag server answered HTTP ${res.status}, so only WebBlox's own flags apply`);
+      } catch (err) {
+        console.warn(`[flags] Roblox's flag server failed (${err.message}), so only WebBlox's own flags apply`);
+      }
+      return {};
+    };
+    window.fetch = function (input, init) {
+      const url = typeof input === 'string' ? input : input && input.url;
+      if (typeof url !== 'string' || !FLAG_SETTINGS_URL.test(url)) return fetchWithoutSettings.apply(this, arguments);
+      const self = this;
+      const args = arguments;
+      return (async () => {
+        const wanted = flagSetName();
+        let name = wanted;
+        let set = wanted === 'live' ? null : await loadFlagSet(wanted);
+        if (!set && wanted !== 'live' && wanted !== 'pinned') {
+          name = 'pinned';
+          set = await loadFlagSet('pinned');
+        }
+        if (set) {
+          try {
+            if (set.ixp && Object.keys(set.ixp).length) localStorage.setItem(IXP_KEY, JSON.stringify(set.ixp));
+            else localStorage.removeItem(IXP_KEY);
+          } catch (e) {}
+        }
+        try { window.__webbloxIxpAtBoot = localStorage.getItem(IXP_KEY); } catch (e) {}
+        const base = set ? { ...set.applicationSettings } : await liveFlags(self, args);
+        let local = {};
+        try {
+          const own = await fetchWithoutSettings('/engine/WebFlags.json', { cache: 'no-cache' });
+          if (own.ok) local = (await own.json()).applicationSettings || {};
+        } catch (e) {}
+        const urlFlags = {};
+        for (const pair of new URL(location.href).searchParams.getAll('flag')) {
+          const at = pair.indexOf('=');
+          if (at > 0) urlFlags[pair.slice(0, at)] = pair.slice(at + 1);
+        }
+        const applicationSettings = Object.assign(base, local, settingsFlags(loadSettings()), urlFlags);
+        window.__webbloxFlags = applicationSettings;
+        window.__webbloxFlagSet = { name: set ? name : 'live', pinnedAt: set ? set.pinnedAt : null, entries: Object.keys(applicationSettings).length };
+        console.log(set ? `[flags] Using the ${name} flag set from ${set.pinnedAt}` : "[flags] Using Roblox's live flags");
+        return new Response(JSON.stringify({ applicationSettings }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      })();
+    };
+
+    const RENDER_SCALE_KEY = 'webblox.renderScaleAuto';
+    const applyRenderScale = () => {
+      try {
+        const url = new URL(location.href);
+        let auto = null;
+        try {
+          auto = localStorage.getItem(RENDER_SCALE_KEY);
+          localStorage.removeItem(RENDER_SCALE_KEY);
+        } catch (e) {}
+        if (auto !== null && url.searchParams.get('renderScale') === auto) {
+          url.searchParams.delete('renderScale');
+          history.replaceState(null, '', url);
+        }
+        const settings = loadSettings();
+        const scale = interfaceScale(settings);
+        if (!url.searchParams.has('renderScale') && scale < 1) window.__webbloxRenderScale = String(+scale.toFixed(4));
+        window.__webbloxStarWidth = starWidth(settings);
+      } catch (err) {
+        console.warn('[local] renderScale adjustment failed:', err);
+      }
+    };
+
+    const applySettingsUpdate = update => {
+      const settings = loadSettings();
+      if (!update || typeof update !== 'object') return settings;
+      const changed = Object.keys(DEFAULT_SETTINGS).filter(key =>
+        typeof update[key] === typeof DEFAULT_SETTINGS[key] && update[key] !== settings[key]);
+      if (!changed.length) return settings;
+      for (const key of changed) settings[key] = update[key];
+      try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)); } catch (e) {}
+      if (changed.includes('fps') && window.__webbloxSetFps && !new URLSearchParams(location.search).has('fps')) {
+        window.__webbloxSetFps(settings.fps);
+      }
+      if (changed.includes('fullbright') && window.__webbloxSetFullbright) window.__webbloxSetFullbright(settings.fullbright);
+      return settings;
+    };
+
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.addEventListener('message', event => {
+        const msg = event.data;
+        if (!msg || msg.type !== 'webblox-settings' || !event.ports[0]) return;
+        let update = null;
+        try { update = JSON.parse(new URL(msg.url).searchParams.get('set')); } catch (e) {}
+        event.ports[0].postMessage(JSON.stringify(applySettingsUpdate(update)));
+      });
+    }
+
+    if (typeof BroadcastChannel === 'function') {
+      const SAME_NETWORK = 'Approve it from a device on the same Wi-Fi as this computer. Roblox refuses Quick Sign-in from another network, mobile data or a VPN.';
+      const QUICK_LOGIN_TEXT = {
+        Created: ['Enter this code on a device that is signed in to Roblox.', SAME_NETWORK],
+        UserLinked: ['Code entered. Confirm the sign-in on the other device.', 'If it says it couldn\'t match your location, connect it to the same Wi-Fi as this computer and try again, or sign in with your password.'],
+        Validated: ['Approved. Signing in…'],
+        Cancelled: ['Quick Sign-in was cancelled on the other device.', 'If it said it couldn\'t match your location, connect it to the same Wi-Fi as this computer and try again, or sign in with your password.'],
+        CodeInvalid: ['This code has expired. Open Quick Sign-in again for a new one.', SAME_NETWORK],
+      };
+      const WISP_NOTE = 'In Wisp mode Roblox sees the relay\'s location, not yours, so it is likely to refuse Quick Sign-in. Sign in with your password, or run the Node server.';
+      const IDLE_MS = 20000;
+      let notice = null;
+      let idle = 0;
+      const hide = () => { if (notice) notice.hidden = true; };
+      const channel = new BroadcastChannel('webblox-quick-login');
+      channel.addEventListener('message', event => {
+        const msg = event.data;
+        if (!msg) return;
+        if (msg.step === 'cancel' || (msg.step === 'login' && msg.httpStatus === 200)) return hide();
+        const lines = QUICK_LOGIN_TEXT[msg.status];
+        if (msg.step === 'login' || !lines) return;
+        if (!notice) {
+          notice = document.createElement('div');
+          notice.id = 'quick-login-notice';
+          notice.setAttribute('role', 'status');
+          notice.setAttribute('aria-live', 'polite');
+          document.body.appendChild(notice);
+        }
+        const shown = window.WEBLOX_MODE === 'wisp' && msg.status !== 'Validated' ? lines.concat(WISP_NOTE) : lines;
+        if (notice.hidden || notice.dataset.status !== msg.status) {
+          notice.replaceChildren(...shown.map(text => Object.assign(document.createElement('p'), { textContent: text })));
+          notice.dataset.status = msg.status;
+        }
+        notice.hidden = false;
+        clearTimeout(idle);
+        idle = setTimeout(hide, msg.status === 'CodeInvalid' ? IDLE_MS / 2 : IDLE_MS);
+      });
+    }
+
+    const SETTINGS_POLL_MS = 1000;
+    const startSettingsSync = () => {
+      let version = 0;
+      const poll = async () => {
+        if (document.visibilityState === 'visible') {
+          try {
+            const data = await (await fetch('/__settings', { cache: 'no-store' })).json();
+            if (data.version !== version) {
+              version = data.version;
+              applySettingsUpdate(data.settings);
+            }
+          } catch (e) {}
+        }
+        setTimeout(poll, SETTINGS_POLL_MS);
+      };
+      return fetch('/__settings', { method: 'POST', body: JSON.stringify(loadSettings()) })
+        .then(res => res.json())
+        .then(data => {
+          version = data.version;
+          poll();
+        })
+        .catch(() => {});
+    };
+
+    const mode = window.WEBLOX_MODE;
+    const loadScript = src => new Promise((resolve, reject) => {
+      const el = document.createElement('script');
+      el.src = src;
+      el.onload = resolve;
+      el.onerror = () => reject(new Error('failed to load ' + src));
+      document.head.appendChild(el);
+    });
+
+    const limited = (promise, ms) => mode === 'node'
+      ? Promise.race([promise, new Promise(resolve => setTimeout(resolve, ms))])
+      : promise;
+
+    const workerReady = async () => {
+      const reg = await navigator.serviceWorker.register('/sw.js?mode=' + mode, { scope: '/' });
+      if (reg.installing || reg.waiting) {
+        const sw = reg.installing || reg.waiting;
+        await new Promise(resolve => {
+          if (sw.state === 'activated') return resolve();
+          sw.addEventListener('statechange', () => {
+            if (sw.state === 'activated' || sw.state === 'redundant') resolve();
+          });
+        });
+      }
+      if (!navigator.serviceWorker.controller) {
+        await new Promise(resolve => {
+          navigator.serviceWorker.addEventListener('controllerchange', resolve, { once: true });
+          setTimeout(resolve, 1000);
+        });
+      }
+      return navigator.serviceWorker.controller ? 'active' : 'uncontrolled';
+    };
+
+    let startupStep = 'settings';
+    setTimeout(() => {
+      const status = document.getElementById('status').textContent;
+      if (status.startsWith('Preparing')) console.warn('[local] still preparing after 15s, last step: ' + startupStep);
+    }, 15000);
+
+    window.__webbloxFullbright = loadSettings().fullbright;
+
+    (async () => {
+      applyRenderScale();
+      if (mode === 'node') await limited(startSettingsSync(), 1000);
+
+      if ('serviceWorker' in navigator) {
+        startupStep = 'service worker';
+        try {
+          const worker = await limited(workerReady(), 4000);
+          if (worker === 'active') {
+            sessionStorage.removeItem('sw-reloaded');
+            console.log('[local] Service Worker active (' + mode + ' mode)');
+          } else if (worker === 'uncontrolled' && !sessionStorage.getItem('sw-reloaded')) {
+            sessionStorage.setItem('sw-reloaded', '1');
+            location.reload();
+            return;
+          } else {
+            console.warn('[local] Service Worker is not controlling this page, continuing without it');
+          }
+        } catch (err) {
+          console.warn('[local] Service Worker registration failed:', err);
+        }
+      }
+
+      if (mode === 'wisp' && !crossOriginIsolated && !sessionStorage.getItem('coi-reloaded')) {
+        sessionStorage.setItem('coi-reloaded', '1');
+        location.reload();
+        return;
+      }
+
+      if (mode === 'wisp') {
+        try {
+          await loadScript('/cobalt/wisps.js');
+          await loadScript('/cobalt/cobalt.js');
+          var wispOverride = new URLSearchParams(location.search).get('wisp');
+          if (wispOverride && /^wss?:\/\//i.test(wispOverride)) window.COBALT_WISP_URLS = [wispOverride];
+          if (window.CobaltIframe) window.CobaltIframe.wispUrl = (window.COBALT_WISP_URLS || [])[0];
+          await loadScript('/js/upstream.js');
+          await window.webbloxSessionReady;
+        } catch (err) {
+          console.error('[local] wisp transport failed to load:', err);
+          return;
+        }
+      }
+
+      window.robloxWasmHostConfig = {
+        server: 'prod',
+        useCdnBinary: false,
+        workerStubUrl: '/engine/stub.js'
+      };
+
+      var version = 'version-75f1039cb4964863';
+      window.__webbloxEngineVersion = version;
+      localStorage.setItem('clientVersion_prod', JSON.stringify({
+        clientVersionUpload: version,
+        version: '',
+        channelName: '',
+        cachedAt: Date.now()
+      }));
+
+      if (window.__webbloxWebGPU) {
+        startupStep = 'webgpu';
+        try {
+          window.__webgpuOnFailure = reason => {
+            console.warn('[local] WebGPU failed, using WebGL:', reason);
+            try { sessionStorage.setItem('webblox.webgpuFailed', String(reason).slice(0, 300)); } catch (e) {}
+            const fallback = new URL(location.href);
+            fallback.searchParams.set('renderer', 'webgl');
+            location.replace(fallback);
+          };
+          if (window.__webgpuWorkerWanted()) await window.__webgpuStartWorker(document.getElementById('canvas'), window.__webgpuOnFailure);
+          else await window.__webgpuReady(document.getElementById('canvas'), {}, { facade: true });
+        } catch (err) {
+          window.__webgpuOnFailure(err);
+          return;
+        }
+      }
+
+      startupStep = 'engine files';
+      var script = document.createElement('script');
+      script.src = '/engine/WasmLoader.js';
+      document.body.appendChild(script);
+    })();
+  </script>
+</body>
+</html>

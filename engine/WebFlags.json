@@ -1,0 +1,22 @@
+{
+    "applicationSettings": {
+        "FFlagEnableCoreContentBadge2": "False",
+        "FFlagDebugSkipPostTtiSignatureVerification": "True",
+        "DFFlagDebugSkipPostTtiSignatureVerification": "True",
+        "FFlagDebugSkipOtaPatchVerification": "True",
+        "DFFlagDebugSkipOtaPatchVerification": "True",
+        "DFIntNumConcurrentBatchWorkflowsPerAssetProviderInstance": "16",
+        "FFlagUIGpuGradient12": "False",
+        "FFlagNetworkPerfTestClientAnalysis5": "False",
+        "FIntTM2NotSupportedUserMask": "3186654",
+        "FIntTM2SupportedUserMask": "16",
+        "FIntMaxCloudAssetDimension": "4096",
+        "FFlagSmoothClusterUseTextureArrays": "True",
+        "FFlagRenderLightIndexTexture2D": "False",
+        "FIntGLESUboBufferPaddingBytes": "16384",
+        "DFFlagRenderShadowMapInvertChartProcessingOrder": "True",
+        "FFlagRenderFixCullHandleTransfer": "True",
+        "FFlagShadowFValuesEnabled": "True",
+        "FFlagTerrainShadowSkirtMainCamera": "True"
+    }
+}

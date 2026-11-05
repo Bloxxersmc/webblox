@@ -1,0 +1,411 @@
+@font-face {
+  font-family: 'Gotham 2022';
+  src: url('loader-client/GothamSSm-Medium.otf') format('opentype');
+  font-weight: 500;
+  font-display: block;
+}
+
+html[data-loader='classic'][data-loader-variant^='client'] #loading-overlay {
+  background: none;
+  pointer-events: none;
+  transition: none;
+}
+
+html[data-loader='classic'][data-loader-variant^='client'] #loading-overlay > :not(.loading-error-panel):not(.loading-dark-gradient) {
+  display: none;
+}
+
+html[data-loader='classic'][data-loader-variant^='client'] #loading-overlay:not(.loading-failed) .loading-dark-gradient {
+  display: none;
+}
+
+html[data-loader='classic'][data-loader-variant^='client'] #loading-overlay.loading-failed {
+  pointer-events: auto;
+}
+
+#loader-client {
+  position: fixed;
+  z-index: 9;
+  inset: 0;
+  overflow: hidden;
+  color: #fff;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+#loader-client.lc-launch {
+  background: #393b3d;
+  font-family: 'Gotham 2022', sans-serif;
+  font-weight: 500;
+}
+
+#loader-client.lc-current {
+  background: #272930;
+  font-family: 'Builder Sans', sans-serif;
+  font-weight: 400;
+}
+
+#loader-client.lc-leaving {
+  pointer-events: none;
+}
+
+#loader-client [hidden] {
+  display: none !important;
+}
+
+.lc-background {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  opacity: 0;
+}
+
+#loader-client #loading-background-image {
+  all: unset;
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  display: block;
+  max-width: none;
+  translate: -50% -50%;
+}
+
+.lc-gradient {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, rgb(0 0 0 / 0%) 0, rgb(0 0 0 / 0%) 50%, rgb(0 0 0 / 50%));
+}
+
+.lc-content {
+  position: absolute;
+  inset: 24px;
+  display: grid;
+  place-items: center;
+}
+
+.lc-mobile .lc-content {
+  inset: 24px 44px;
+}
+
+@media (max-aspect-ratio: 1 / 1) and (not (aspect-ratio: 1 / 1)) {
+  .lc-mobile .lc-content {
+    inset: 44px 24px;
+  }
+}
+
+.lc-info {
+  position: relative;
+  box-sizing: border-box;
+  grid-area: 1 / 1;
+}
+
+.lc-info-background {
+  position: absolute;
+  inset: 0;
+  border-radius: 8px;
+}
+
+.lc-launch .lc-info {
+  display: flex;
+  width: max(200px, 60%);
+  height: max(125px, 40%);
+}
+
+.lc-launch .lc-info-background {
+  background: #393b3d;
+  opacity: 0.2;
+}
+
+.lc-current .lc-info {
+  width: 60%;
+}
+
+.lc-current .lc-info-background {
+  background: #202227;
+  opacity: 0;
+}
+
+@media (max-aspect-ratio: 1 / 1) and (not (aspect-ratio: 1 / 1)) {
+  .lc-launch .lc-info {
+    width: max(200px, 80%);
+    height: max(125px, 20%);
+  }
+
+  .lc-current .lc-info {
+    width: 100%;
+  }
+}
+
+#loader-client #loading-icon-shell {
+  all: unset;
+  position: absolute;
+  z-index: 2;
+  top: 0;
+  left: 50%;
+  display: block;
+  overflow: hidden;
+  border-radius: 8px;
+  background: #656668;
+  translate: -50% -50%;
+}
+
+#loader-client #loading-icon-shell::after {
+  content: none;
+}
+
+#loader-client #loading-experience-icon {
+  all: unset;
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  border-radius: 8px;
+}
+
+.lc-shimmer {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  border-radius: 8px;
+}
+
+.lc-shimmer::before {
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 300%;
+  height: 100%;
+  background: linear-gradient(115deg, var(--edge) 28.8%, var(--middle) 50%, var(--edge) 71.2%);
+  content: '';
+  animation: lc-shimmer var(--shimmer-time) linear var(--shimmer-delay) infinite;
+}
+
+.lc-launch .lc-shimmer {
+  --edge: rgb(128 128 128 / 30%);
+  --middle: rgb(255 255 255 / 70%);
+  --shimmer-time: 0.66667s;
+  --shimmer-delay: -0.33333s;
+  z-index: 1;
+}
+
+#loader-client.lc-launch #loading-experience-icon {
+  z-index: 2;
+}
+
+.lc-current .lc-shimmer {
+  --edge: rgb(128 128 128 / 30%);
+  --middle: rgb(255 255 255 / 70%);
+  --shimmer-time: 2s;
+  --shimmer-delay: -1s;
+  z-index: 2;
+}
+
+#loader-client.lc-current #loading-experience-icon {
+  z-index: 1;
+}
+
+.lc-text {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  box-sizing: border-box;
+  width: 100%;
+  align-items: center;
+  flex-direction: column;
+}
+
+.lc-launch .lc-text {
+  height: calc(100% - 75px);
+  gap: 2px;
+  justify-content: center;
+}
+
+.lc-current .lc-text {
+  gap: 36px;
+  padding: 36px 0;
+}
+
+.lc-current.lc-mobile .lc-text {
+  gap: 12px;
+  padding: 12px 0;
+}
+
+.lc-place,
+.lc-creator {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  text-align: center;
+}
+
+.lc-launch .lc-place {
+  width: 80%;
+  height: 50%;
+  overflow: hidden;
+}
+
+.lc-launch .lc-creator {
+  width: 60%;
+  height: 30%;
+  overflow: hidden;
+}
+
+.lc-current .lc-place {
+  width: 80%;
+}
+
+.lc-current .lc-creator {
+  width: 60%;
+  gap: 4px;
+}
+
+#loader-client #loading-experience-title {
+  all: unset;
+  display: block;
+  width: 100%;
+  overflow-wrap: anywhere;
+  color: #fff;
+  font-weight: inherit;
+  text-align: center;
+}
+
+#loader-client.lc-current #loading-experience-title {
+  color: #f7f7f8;
+  font-weight: 700;
+}
+
+#loader-client:not(.lc-ready) #loading-experience-title {
+  visibility: hidden;
+}
+
+#loader-client #loading-experience-creator {
+  all: unset;
+  display: block;
+  overflow-wrap: anywhere;
+  color: #fff;
+  text-align: center;
+}
+
+#loader-client.lc-current #loading-experience-creator {
+  color: #d5d7dd;
+}
+
+#loader-client.lc-launch #loading-experience-creator {
+  width: 100%;
+}
+
+#loader-client.lc-launch #loading-verified-badge {
+  display: none;
+}
+
+.lc-server {
+  position: absolute;
+  bottom: 0;
+  left: 50%;
+  translate: -50% 0;
+}
+
+.lc-launch .lc-server {
+  top: 100%;
+  bottom: auto;
+  width: 50%;
+  height: 12px;
+}
+
+.lc-current .lc-server {
+  bottom: -24px;
+  display: flex;
+  width: calc(100% - 48px);
+  height: 48px;
+  align-items: center;
+}
+
+#loader-client #status {
+  all: unset;
+  display: block;
+  width: 100%;
+  color: #bdbebe;
+  text-align: center;
+  white-space: pre-line;
+}
+
+#loader-client.lc-current #status {
+  color: #d5d7dd;
+}
+
+#loading-overlay.loading-failed ~ #loader-client #status {
+  visibility: hidden;
+}
+
+.lc-close {
+  position: absolute;
+  z-index: 10;
+  display: none;
+  width: 32px;
+  height: 32px;
+}
+
+.lc-close-on .lc-close {
+  display: block;
+}
+
+.lc-launch .lc-close {
+  top: 5px;
+  right: 5px;
+}
+
+.lc-current .lc-close {
+  top: 0;
+  left: 0;
+}
+
+#loader-client #loading-cancel {
+  all: unset;
+  display: block;
+  width: 32px;
+  height: 32px;
+  cursor: pointer;
+}
+
+#loader-client.lc-launch #loading-cancel {
+  background: url('loader-2020/cancelButton.png') center / 100% 100% no-repeat;
+}
+
+#loader-client.lc-current #loading-cancel {
+  background: url('../assets/loading/cancelButton.png') center / 100% 100% no-repeat;
+}
+
+#loader-client #loading-cancel:focus-visible {
+  outline: 2px solid #fff;
+  outline-offset: 2px;
+}
+
+.lc-spinner {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  box-sizing: border-box;
+  width: 24px;
+  height: 24px;
+  border: 3px solid rgb(255 255 255 / 30%);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: lc-spin 0.9s linear infinite;
+}
+
+@keyframes lc-shimmer {
+  from { transform: translateX(-33.3333%); }
+  to { transform: translateX(33.3333%); }
+}
+
+@keyframes lc-spin {
+  to { transform: rotate(1turn); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lc-current .lc-shimmer {
+    display: none;
+  }
+}

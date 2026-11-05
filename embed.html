@@ -1,0 +1,341 @@
+<!doctype html>
+<html lang="en">
+<head><script>window.WEBBLOX_BOOT=%%BOOT%%;</script><script>// Runs first in the launcher page that webblox.html writes into itself (see tools/singlefile/build.mjs).
+// The page stays the local file: WebBlox's own files load from jsDelivr, Roblox requests go through the
+// Wisp relay in this page, and only a game runs in a frame, because the engine's threads need a
+// cross-origin isolated page and a local file can never be one. The frame is jsDelivr's copy of
+// WebBlox, isolated by its service worker with Document-Isolation-Policy.
+(function () {
+  'use strict';
+  var BOOT = window.WEBBLOX_BOOT;                 // { base, host, hosts, repo, branch, ref } from webblox.html
+  var BASE = BOOT.base;
+  var FRAME_ORIGIN = new URL(BASE).origin;
+  var nativeFetch = window.fetch.bind(window);
+  var CDN = /(^|\.)rbxcdn\.com$/i;
+  var NULL_BODY = [101, 204, 205, 304];
+  var ENGINE_PAGE = /[?&](placeId|launcher|flag)=/;
+
+  window.__WB = BASE;                             // the launcher's root paths point here (build.mjs)
+  window.WEBLOX_MODE = 'wisp';
+  window.WEBBLOX_EMBED = { base: BASE };
+
+  var store = {
+    get: function (key) { try { return JSON.parse(localStorage.getItem(key)); } catch (e) { return null; } },
+    set: function (key, value) { try { localStorage.setItem(key, JSON.stringify(value)); } catch (e) {} },
+  };
+
+  // --- Roblox requests ---------------------------------------------------------------------------
+  // The launcher asks for /__proxy__/<url>, which a service worker answers elsewhere. Here the page
+  // answers it: CDN files straight from the CDN (it allows cross-origin requests), the rest through
+  // public/js/upstream.js and the Wisp relay.
+  var upstreamReady = new Promise(function (resolve) {
+    (function check() { window.webbloxUpstream ? resolve(window.webbloxUpstream) : setTimeout(check, 30); })();
+  });
+
+  function headersOf(input, init) {
+    var all = new Headers(input instanceof Request ? input.headers : undefined);
+    if (init && init.headers) new Headers(init.headers).forEach(function (value, key) { all.set(key, value); });
+    var out = {};
+    all.forEach(function (value, key) { out[key] = value; });
+    return out;
+  }
+  function bodyOf(input, init) {
+    if (init && init.body != null) return new Response(init.body).arrayBuffer();
+    if (input instanceof Request && input.body) return input.clone().arrayBuffer();
+    return Promise.resolve(null);
+  }
+  function asResponse(reply) {
+    var status = reply.status >= 200 && reply.status <= 599 ? reply.status : 502;
+    return new Response(NULL_BODY.indexOf(reply.status) >= 0 ? null : reply.body, { status: status, statusText: reply.statusText || '', headers: reply.headers });
+  }
+  async function relay(url, method, headers, body, fallback) {
+    if (method === 'GET' && !fallback && CDN.test(new URL(url).hostname)) {
+      try { return await nativeFetch(url, { mode: 'cors', credentials: 'omit', headers: headers.range ? { range: headers.range } : {} }); } catch (e) {}
+    }
+    await upstreamReady;
+    return window.webbloxUpstream({ url: url, method: method, headers: headers, body: body && body.byteLength ? body : null, fallback: fallback });
+  }
+
+  window.fetch = function (input, init) {
+    var url = typeof input === 'string' ? input : input instanceof URL ? input.href : input && input.url;
+    var at = url ? url.indexOf('/__proxy__/') : -1;
+    if (at < 0) return nativeFetch(input, init);
+    var target = url.slice(at + '/__proxy__/'.length);
+    var method = String((init && init.method) || (input instanceof Request ? input.method : 'GET')).toUpperCase();
+    return bodyOf(input, init).then(function (body) { return relay(target, method, headersOf(input, init), body, false); })
+      .then(function (reply) { return reply instanceof Response ? reply : asResponse(reply); });
+  };
+
+  // --- the game frame ------------------------------------------------------------------------------
+  var HIDDEN = 'position:fixed;left:0;top:0;width:1px;height:1px;border:0;opacity:0;pointer-events:none;z-index:-1';
+  var SHOWN = 'position:fixed;left:0;top:0;width:100vw;height:100vh;height:100dvh;border:0;opacity:1;z-index:2147483647;background:#000';
+  var TOUCH = window.matchMedia && matchMedia('(pointer: coarse)').matches;
+  var game = { frame: null, state: 'idle', mode: 'game', ready: null, resolve: null, pending: null, back: null, notice: null };
+  var frameHome = BASE + 'app.xhtml?embed=1';
+
+  function resetReady() { game.ready = new Promise(function (resolve) { game.resolve = resolve; }); }
+  function makeFrame() {
+    if (game.frame) return game.frame;
+    resetReady();
+    var frame = document.createElement('iframe');
+    frame.title = 'WebBlox game';
+    frame.allow = 'cross-origin-isolated; fullscreen; gamepad; autoplay; clipboard-read; clipboard-write; screen-wake-lock; keyboard-map; microphone';
+    frame.setAttribute('allowfullscreen', '');
+    frame.style.cssText = HIDDEN;
+    frame.src = frameHome + (hasSession() ? '' : '&signin=1');
+    (document.body || document.documentElement).appendChild(frame);
+    game.frame = frame;
+    return frame;
+  }
+
+  function sessionFor() {
+    var local = {}, session = {};
+    try {
+      Object.keys(localStorage).forEach(function (key) {
+        if (key.indexOf('webblox.') === 0 && key !== 'webblox.cdn' && key !== 'webblox.build') local[key] = localStorage.getItem(key);
+      });
+      session['cobalt-cookies'] = localStorage.getItem('cobalt-cookies') || '[]';
+      var join = sessionStorage.getItem('webblox.launcherJoin');
+      if (join) session['webblox.launcherJoin'] = join;
+    } catch (e) {}
+    return { local: local, session: session };
+  }
+
+  function hasSession() {
+    try { return JSON.parse(localStorage.getItem('cobalt-cookies') || '[]').some(function (c) { return c.n === '.ROBLOSECURITY'; }); } catch (e) { return false; }
+  }
+
+  // A Back button over the frame while it shows Roblox's sign-in screen, which has no way back.
+  function backButton(show) {
+    if (!game.back) {
+      var button = game.back = document.createElement('button');
+      button.type = 'button';
+      button.textContent = '\u2190 Back to WebBlox';
+      button.style.cssText = 'position:fixed;right:max(12px,env(safe-area-inset-right));top:max(12px,env(safe-area-inset-top));z-index:2147483647;' +
+        'font:600 15px/1 system-ui,sans-serif;color:#fff;background:rgba(18,18,21,.82);border:1px solid rgba(255,255,255,.18);' +
+        'border-radius:999px;padding:10px 14px;cursor:pointer;-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px)';
+      button.addEventListener('click', finish);
+      document.body.appendChild(button);
+    }
+    game.back.hidden = !show;
+  }
+
+  function play(path, mode) {
+    var frame = makeFrame();
+    if (game.state !== 'idle') {
+      // Something is already running in the frame: back to the waiting page first.
+      resetReady();
+      try { frame.contentWindow.location.replace(frameHome); } catch (e) { frame.src = frameHome; }
+    }
+    game.state = 'starting';
+    game.mode = mode || 'game';
+    backButton(game.mode === 'signin');
+    if (game.notice) { game.notice.remove(); game.notice = null; }
+    frame.style.cssText = SHOWN;
+    document.documentElement.style.overflow = 'hidden';      // nothing behind the game scrolls
+    // On phones and tablets a game fills the screen in landscape, like Roblox's app. This runs inside
+    // the tap that started the game, which fullscreen requires.
+    if (TOUCH && game.mode === 'game' && frame.requestFullscreen && !document.fullscreenElement) {
+      frame.requestFullscreen({ navigationUI: 'hide' }).then(function () {
+        if (screen.orientation && screen.orientation.lock) return screen.orientation.lock('landscape');
+      }).catch(function () {});
+    }
+    frame.focus();
+    var token = game.pending = {};
+    game.ready.then(function () {
+      if (game.pending !== token || game.state !== 'starting') return;
+      var data = sessionFor();
+      game.state = 'game';
+      frame.contentWindow.postMessage({ type: 'webblox-play', path: path, local: data.local, session: data.session }, FRAME_ORIGIN);
+      frame.focus();
+    });
+  }
+
+  function finish() {
+    var frame = game.frame;
+    if (!frame) return;
+    var signedIn = game.mode === 'signin' && hasSession();
+    game.state = 'idle';
+    game.pending = null;
+    frame.style.cssText = HIDDEN;
+    document.documentElement.style.overflow = '';
+    if (document.fullscreenElement === frame) {
+      try { if (screen.orientation && screen.orientation.unlock) screen.orientation.unlock(); } catch (e) {}
+      document.exitFullscreen().catch(function () {});
+    }
+    backButton(false);
+    if (game.notice) { game.notice.remove(); game.notice = null; }
+    if (signedIn) { location.reload(); return; }     // signed in with Roblox: start the launcher with it
+    resetReady();
+    // Back to the frame's light waiting page, which frees the engine's memory. replace() adds no
+    // history entry, so the browser's Back button still belongs to the launcher.
+    try { frame.contentWindow.location.replace(frameHome); } catch (e) { frame.src = frameHome; }
+    window.focus();
+  }
+
+  window.addEventListener('message', function (event) {
+    var frame = game.frame, msg = event.data;
+    if (!frame || event.source !== frame.contentWindow || !msg || typeof msg.type !== 'string') return;
+    if (msg.type === 'webblox-host-ready') {
+      if (game.state === 'game') finish();         // the game went back to the waiting page
+      else game.resolve();
+    } else if (msg.type === 'webblox-game-page') {
+      if (game.state === 'idle') return;
+      frame.focus();
+      if (msg.isolated === false) cannotIsolate(msg.url);
+    } else if (msg.type === 'webblox-leave') {
+      finish();
+    } else if (msg.type === 'webblox-jar' && typeof msg.jar === 'string') {
+      try { localStorage.setItem('cobalt-cookies', msg.jar); } catch (e) {}
+    } else if (msg.type === 'webblox-fetch' && event.ports[0]) {
+      var port = event.ports[0];
+      relay(msg.url, msg.method || 'GET', msg.headers || {}, msg.body || null, !!msg.fallback).then(async function (reply) {
+        if (reply instanceof Response) {
+          var headers = [];
+          reply.headers.forEach(function (value, key) { headers.push([key, value]); });
+          reply = { status: reply.status, statusText: reply.statusText, headers: headers, body: await reply.arrayBuffer() };
+        }
+        port.postMessage({ ok: true, status: reply.status, statusText: reply.statusText, headers: reply.headers, body: reply.body }, [reply.body]);
+      }).catch(function (error) {
+        port.postMessage({ ok: false, error: String((error && error.message) || error) });
+      });
+    }
+  });
+
+  // Browsers without Document-Isolation-Policy (Firefox, Safari, and Chrome on Android until it ships
+  // there) can't give a frame the isolation the engine's threads need. Say so, and offer to open the
+  // game as the page itself, which they can isolate. That leaves this file, so it's the user's choice.
+  function cannotIsolate(url) {
+    if (game.notice) return;
+    var notice = game.notice = document.createElement('div');
+    notice.setAttribute('role', 'alertdialog');
+    notice.style.cssText = 'position:fixed;inset:0;z-index:2147483647;display:grid;place-items:center;padding:16px;background:#121215;color:#f7f7f8;font:16px/1.45 system-ui,sans-serif;text-align:center';
+    notice.innerHTML = '<div style="max-width:420px;display:grid;gap:14px"><strong style="font-size:20px">This browser can\'t run games inside this file</strong>' +
+      '<span style="color:#bcbec8">Games need a feature this browser doesn\'t have yet in embedded pages. You can open the game as its own page instead. You may have to sign in there once.</span>' +
+      '<div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap"><button type="button" data-go style="font:inherit;font-weight:700;padding:11px 18px;border:0;border-radius:8px;background:#335fff;color:#fff">Open the game</button>' +
+      '<button type="button" data-back style="font:inherit;font-weight:600;padding:11px 18px;border:1px solid #30323a;border-radius:8px;background:#191a1f;color:#f7f7f8">Back</button></div></div>';
+    notice.querySelector('[data-back]').addEventListener('click', finish);
+    notice.querySelector('[data-go]').addEventListener('click', function () {
+      var query = String(url || '').slice(String(url || '').indexOf('?'));
+      location.href = BASE + 'app.xhtml' + (query.indexOf('?') === 0 ? query : '');
+    });
+    document.body.appendChild(notice);
+  }
+
+  var warmed = false;
+  window.webbloxEmbed = {
+    // Called for every way the launcher starts a game or Roblox's own launcher.
+    leave: function (url) {
+      var query = String(url).slice(String(url).indexOf('?'));
+      if (String(url).indexOf('?') < 0 || !ENGINE_PAGE.test(query)) return false;
+      play(query);
+      return true;
+    },
+    // The frame installs its service worker and prepares the engine files while the launcher is open.
+    warm: function () {
+      if (warmed || (navigator.connection && navigator.connection.saveData)) return;
+      warmed = true;
+      var start = function () { makeFrame(); };
+      if ('requestIdleCallback' in window) requestIdleCallback(start, { timeout: 2500 }); else setTimeout(start, 1200);
+    },
+    // Roblox's own pages (account settings) need the relay; the frame's service worker serves them.
+    frameUrl: function (url) { makeFrame(); return BASE + '__frame__/' + url; },
+    assetUrl: function (url) { try { return CDN.test(new URL(url).hostname) ? url : null; } catch (e) { return null; } },
+    play: play,
+  };
+  // The session prompt's "Sign in with Roblox" (public/js/upstream.js).
+  window.webbloxSignIn = function () { play('?launcher=roblox&signin=1', 'signin'); };
+
+  // Start preparing the game frame shortly after the launcher appears, even while it asks for sign-in.
+  setTimeout(function () { window.webbloxEmbed.warm(); }, 1500);
+
+  // --- staying in this file --------------------------------------------------------------------------
+  // Anything that would navigate away instead starts a game in the frame or opens beside the launcher.
+  if (window.navigation) {
+    navigation.addEventListener('navigate', function (event) {
+      if (!event.cancelable || event.hashChange || event.downloadRequest) return;
+      var dest = event.destination.url, here = location.href.split('#')[0];
+      if (dest.split('#')[0] === here) return;        // a reload, or the launcher's own routes
+      event.preventDefault();
+      var query = dest.indexOf('?') >= 0 ? dest.slice(dest.indexOf('?')).split('#')[0] : '';
+      if (ENGINE_PAGE.test(query) && (dest.indexOf('file:') === 0 || dest.indexOf(BASE) === 0 || new URL(dest).origin === location.origin)) play(query);
+      else window.open(dest, '_blank', 'noopener');
+    });
+  }
+
+  // --- keeping up to date ----------------------------------------------------------------------------
+  // webblox.html pins every file to one commit so versions never mix. The newest commit is looked up
+  // in the background and used from the next start. A jsDelivr host that failed is tried again later.
+  setTimeout(function () {
+    var build = store.get('webblox.build') || {};
+    if (!build.at || Date.now() - build.at > 30 * 60 * 1000) {
+      nativeFetch('https://api.github.com/repos/' + BOOT.repo + '/commits/' + BOOT.branch, { headers: { Accept: 'application/vnd.github.sha' } })
+        .then(function (r) { return r.ok ? r.text() : ''; })
+        .then(function (sha) { sha = sha.trim(); if (/^[0-9a-f]{40}$/.test(sha)) store.set('webblox.build', { sha: sha, at: Date.now() }); })
+        .catch(function () {});
+    }
+    var cdn = store.get('webblox.cdn') || {};
+    var first = BOOT.hosts[0];
+    if (BOOT.host !== first && (!cdn.at || Date.now() - cdn.at > 6 * 3600 * 1000)) {
+      var controller = new AbortController();
+      setTimeout(function () { controller.abort(); }, 5000);
+      nativeFetch(first + '/gh/' + BOOT.repo + '@' + BOOT.ref + '/cobalt/wisps.js', { signal: controller.signal, cache: 'no-store' })
+        .then(function (r) { store.set('webblox.cdn', r.ok ? { host: first, at: Date.now() } : { host: BOOT.host, at: Date.now() }); })
+        .catch(function () { store.set('webblox.cdn', { host: BOOT.host, at: Date.now() }); });
+    }
+  }, 8000);
+})();
+</script><link rel="preload" as="script" href="%%BASE%%cobalt/wisps.js"><link rel="preload" as="script" href="%%BASE%%cobalt/cobalt.js"><link rel="preload" as="script" href="%%BASE%%js/upstream.js"><link rel="modulepreload" href="%%BASE%%launcher/js/account.js"><link rel="modulepreload" href="%%BASE%%launcher/js/avatar-room.js"><link rel="modulepreload" href="%%BASE%%launcher/js/avatar.js"><link rel="modulepreload" href="%%BASE%%launcher/js/avatar3d.js"><link rel="modulepreload" href="%%BASE%%launcher/js/connections.js"><link rel="modulepreload" href="%%BASE%%launcher/js/core.js"><link rel="modulepreload" href="%%BASE%%launcher/js/game.js"><link rel="modulepreload" href="%%BASE%%launcher/js/groups.js"><link rel="modulepreload" href="%%BASE%%launcher/js/icons.js"><link rel="modulepreload" href="%%BASE%%launcher/js/inventory.js"><link rel="modulepreload" href="%%BASE%%launcher/js/main.js"><link rel="modulepreload" href="%%BASE%%launcher/js/market.js"><link rel="modulepreload" href="%%BASE%%launcher/js/people.js"><link rel="modulepreload" href="%%BASE%%launcher/js/previews.js"><link rel="modulepreload" href="%%BASE%%launcher/js/settings.js"><link rel="modulepreload" href="%%BASE%%launcher/js/social.js"><link rel="modulepreload" href="%%BASE%%launcher/js/socials.js"><link rel="modulepreload" href="%%BASE%%launcher/js/stage.js"><link rel="modulepreload" href="%%BASE%%launcher/js/themes.js"><link rel="modulepreload" href="%%BASE%%launcher/js/tilehover.js"><link rel="modulepreload" href="%%BASE%%launcher/js/trades.js"><link rel="modulepreload" href="%%BASE%%launcher/js/values.js"><link rel="modulepreload" href="%%BASE%%launcher/js/xbox-game.js"><link rel="modulepreload" href="%%BASE%%launcher/js/xbox.js">
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>WebBlox</title>
+  <link rel="icon" href="%%BASE%%assets/favicon.svg" type="image/svg+xml">
+  <link rel="preload" href="%%BASE%%assets/loading/BuilderSans-Regular.otf" as="font" type="font/otf" crossorigin>
+  <link rel="preload" href="%%BASE%%assets/loading/BuilderSans-Bold.otf" as="font" type="font/otf" crossorigin>
+  <link rel="preconnect" href="https://tr.rbxcdn.com">
+  <script>
+    try {
+      var theme = localStorage.getItem('webblox.launcher.theme');
+      var mode = localStorage.getItem('webblox.launcher.themeMode');
+      var legacy = { system: 'system', dark: 'dark', light: 'light', midnight: 'dark', ocean: 'dark', grape: 'dark', emerald: 'dark', rose: 'dark' };
+      if (legacy[theme]) {
+        mode = legacy[theme];
+        theme = 'Default';
+        localStorage.setItem('webblox.launcher.theme', theme);
+        localStorage.setItem('webblox.launcher.themeMode', mode);
+      }
+      if (theme === 'xbox') document.documentElement.dataset.theme = theme;
+      else {
+        if (mode !== 'system' && mode !== 'light') mode = mode === 'dark' ? mode : 'dark';
+        if (mode === 'system') mode = matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+        if (theme === 'Halloween2026') mode = 'dark';
+        document.documentElement.dataset.theme = (theme || 'Default') + '-' + mode;
+      }
+    } catch (e) {}
+  </script>
+  <link rel="stylesheet" href="%%BASE%%launcher/app-themes.css">
+  <link rel="stylesheet" href="%%BASE%%launcher/style.css">
+  <link rel="stylesheet" href="%%BASE%%launcher/xbox.css">
+  <link rel="modulepreload" href="%%BASE%%launcher/js/app.js">
+  <script type="module" src="%%BASE%%launcher/js/main.js"></script>
+</head>
+<body>
+  <header class="top">
+    <a class="logo" href="#/" aria-label="WebBlox home">
+      <svg viewBox="157 157 710 710" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><path fill="currentColor" fill-rule="evenodd" d="M307.201 157.281L157.281 716.799L716.799 866.719L866.719 307.201L307.201 157.281ZM569.242 611.157L412.893 569.242L454.807 412.893L611.219 454.807L569.242 611.157Z"/></svg>
+    </a>
+    <form class="find" id="find" role="search">
+      <span class="find-icon" data-icon="magnifying-glass"></span>
+      <input id="query" type="search" placeholder="Search games, people and communities" autocomplete="off" spellcheck="false" role="combobox" aria-label="Search" aria-expanded="false" aria-controls="suggestions" aria-autocomplete="list">
+      <ul class="suggestions" id="suggestions" role="listbox" aria-label="Search suggestions" hidden></ul>
+    </form>
+    <div class="me" id="me"></div>
+  </header>
+  <nav class="rail" id="rail" aria-label="Main"></nav>
+  <div class="layout" id="layout">
+    <main class="content" id="content"></main>
+    <aside class="friends-column" id="friends" aria-label="Friends online" hidden></aside>
+  </div>
+  <div class="toasts" id="toasts" popover="manual"></div>
+</body>
+</html>

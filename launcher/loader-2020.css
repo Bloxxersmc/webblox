@@ -1,0 +1,272 @@
+@font-face {
+  font-family: 'Source Sans 2020';
+  src: url('loader-2016/SourceSansPro-Regular.ttf') format('truetype');
+  font-weight: 400;
+  font-display: block;
+}
+
+@font-face {
+  font-family: 'Source Sans 2020';
+  src: url('loader-2020/SourceSansPro-Light.ttf') format('truetype');
+  font-weight: 300;
+  font-display: block;
+}
+
+@font-face {
+  font-family: 'Source Sans 2020';
+  src: url('loader-2016/SourceSansPro-Bold.ttf') format('truetype');
+  font-weight: 700;
+  font-display: block;
+}
+
+html[data-loader='2020'] #loading-overlay {
+  background: none;
+  pointer-events: none;
+  transition: none;
+}
+
+html[data-loader='2020'] #loading-overlay > :not(.loading-error-panel):not(.loading-dark-gradient) {
+  display: none;
+}
+
+html[data-loader='2020'] #loading-overlay:not(.loading-failed) .loading-dark-gradient {
+  display: none;
+}
+
+html[data-loader='2020'] #loading-overlay.loading-failed {
+  pointer-events: auto;
+}
+
+#loader-2020 {
+  position: fixed;
+  z-index: 9;
+  inset: 0;
+  overflow: hidden;
+  color: #fff;
+  font-family: 'Source Sans 2020', sans-serif;
+  font-kerning: normal;
+  font-weight: 400;
+}
+
+#loader-2020.l20-leaving {
+  pointer-events: none;
+}
+
+#loader-2020 [hidden] {
+  display: none !important;
+}
+
+.l20-background {
+  position: absolute;
+  inset: 0;
+  background: #2d2d2d;
+}
+
+.l20-info {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  display: flex;
+  width: min(75vw, 150vh);
+  box-sizing: border-box;
+  align-items: center;
+  aspect-ratio: 3 / 2;
+  flex-direction: column;
+  justify-content: center;
+  padding-bottom: 25px;
+  translate: -50% -50%;
+}
+
+.l20-thumbnail {
+  position: relative;
+  width: min(100%, 400px);
+  flex: none;
+  aspect-ratio: 576 / 324;
+}
+
+#loader-2020 #loading-background-image {
+  all: unset;
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+}
+
+#loader-2020 .l20-thumbnail.loading-image-ready #loading-background-image {
+  opacity: 1;
+}
+
+.l20-place {
+  display: flex;
+  width: 100%;
+  height: 80px;
+  flex: none;
+  align-items: flex-end;
+}
+
+.l20-creator {
+  display: flex;
+  width: 100%;
+  height: 30px;
+  flex: none;
+  align-items: center;
+}
+
+.l20-message {
+  width: 100%;
+  height: 35px;
+  flex: none;
+  box-sizing: border-box;
+  padding-top: 5px;
+}
+
+.l20-message-line {
+  display: flex;
+  height: 25px;
+  align-items: center;
+}
+
+#loader-2020 #loading-experience-title,
+#loader-2020 #loading-experience-creator,
+#loader-2020 #status {
+  all: unset;
+  position: relative;
+  top: 0.5px;
+  display: block;
+  width: 100%;
+  overflow-wrap: anywhere;
+  color: #fff;
+  text-align: center;
+}
+
+#loader-2020 #loading-experience-creator,
+#loader-2020 #status {
+  font-weight: 300;
+}
+
+#loader-2020 #status {
+  white-space: pre-line;
+}
+
+#loader-2020:not(.l20-ready) #loading-experience-title {
+  visibility: hidden;
+}
+
+#loader-2020 #loading-experience-creator::before {
+  content: 'By ';
+}
+
+#loading-overlay.loading-failed ~ #loader-2020 #status {
+  visibility: hidden;
+}
+
+.l20-graphics {
+  position: absolute;
+  right: 5vw;
+  bottom: 5vh;
+  width: min(100px, 15vw, 15vh);
+  aspect-ratio: 1;
+}
+
+.l20-spinner {
+  position: absolute;
+  inset: 0;
+  background: url('loader-2020/robloxTilt.png') center / 100% 100% no-repeat;
+}
+
+.l20-close {
+  position: absolute;
+  z-index: 10;
+  top: 5px;
+  right: 5px;
+  width: 32px;
+  height: 32px;
+}
+
+#loader-2020 #loading-cancel {
+  all: unset;
+  display: block;
+  width: 32px;
+  height: 32px;
+  background: url('loader-2020/cancelButton.png') center / 100% 100% no-repeat;
+  opacity: 0;
+  pointer-events: none;
+}
+
+#loader-2020 #loading-cancel.l20-active {
+  cursor: pointer;
+  pointer-events: auto;
+}
+
+#loader-2020 #loading-cancel:focus-visible {
+  outline: 2px solid #fff;
+  outline-offset: 2px;
+}
+
+@media (max-aspect-ratio: 1 / 1) and (not (aspect-ratio: 1 / 1)) {
+  .l20-info {
+    width: min(75vw, 66.6667vh);
+    aspect-ratio: 2 / 3;
+  }
+}
+
+#loader-2020 #loading-icon-shell {
+  all: unset;
+  position: relative;
+  display: block;
+  width: min(100%, 256px);
+  flex: none;
+  aspect-ratio: 1;
+}
+
+#loader-2020 #loading-icon-shell::after {
+  content: none;
+}
+
+#loader-2020 #loading-experience-icon {
+  all: unset;
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+}
+
+#loader-2020 #loading-icon-shell.loading-image-ready #loading-experience-icon {
+  opacity: 1;
+}
+
+html[data-loader-variant='white'] .l20-background {
+  background: #fff;
+}
+
+html[data-loader-variant='white'] .l20-info {
+  width: min(75vw, 66.6667vh);
+  aspect-ratio: 2 / 3;
+  padding-bottom: 0;
+}
+
+html[data-loader-variant='white'] .l20-message {
+  padding-top: 10px;
+}
+
+html[data-loader-variant='white'] .l20-spinner {
+  background-image: url('loader-2020/robloxTiltRed.png');
+}
+
+html[data-loader-variant='white'] #loader-2020 #loading-background-image {
+  transition: opacity 0.15s cubic-bezier(0.455, 0.03, 0.515, 0.955);
+}
+
+html[data-loader-variant='white'] #loader-2020 #loading-experience-title,
+html[data-loader-variant='white'] #loader-2020 #loading-experience-creator {
+  color: #000;
+  font-weight: 400;
+}
+
+html[data-loader-variant='white'] #loader-2020 #status {
+  font-weight: 700;
+}

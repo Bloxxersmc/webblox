@@ -1,0 +1,78 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Entry page for the hosted copy. jsDelivr serves .xhtml as a page, so this is the one file that
+     opens directly; it installs the service worker that serves the rest of the app with the
+     isolation headers threads need, then moves into the app. -->
+<html xmlns="http://www.w3.org/1999/xhtml" lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>WebBlox</title>
+  <style>
+    html, body { height: 100%; margin: 0; background: #0b0d10; color: #e8eaed; font: 15px/1.5 system-ui, sans-serif; }
+    body { display: grid; place-items: center; }
+    main { text-align: center; max-width: 420px; padding: 24px; }
+    h1 { font-size: 22px; font-weight: 650; margin: 0 0 8px; }
+    p { margin: 0; color: #9aa0a6; }
+    p.error { color: #f28b82; margin-top: 12px; }
+  </style>
+</head>
+<body>
+  <main><h1>WebBlox</h1><p id="status">Starting…</p></main>
+  <script><![CDATA[
+  (async function () {
+    var status = document.getElementById('status');
+    function fail(message) {
+      status.textContent = message;
+      status.className = 'error';
+    }
+    if (!('serviceWorker' in navigator)) return fail('This browser cannot run WebBlox here. Use a current Chromium browser.');
+    try {
+      var registration = await navigator.serviceWorker.register('sw.js?mode=wisp', { scope: './' });
+      if (!navigator.serviceWorker.controller) {
+        status.textContent = 'Installing…';
+        await new Promise(function (resolve) {
+          navigator.serviceWorker.addEventListener('controllerchange', resolve, { once: true });
+          var worker = registration.installing || registration.waiting || registration.active;
+          if (worker && worker.state === 'activated') resolve();
+        });
+      }
+    } catch (error) {
+      return fail('Could not start: ' + (error && error.message || error));
+    }
+    if (window.parent === window) {
+      // A fresh navigation picks up the worker's headers, which isolate the app for its threads.
+      location.replace('./' + location.search + location.hash);
+      return;
+    }
+    // In the single-file launcher this page is the game frame, waiting for a game. It prepares the
+    // engine files meanwhile, then takes the session and settings it's given and opens the game.
+    status.textContent = 'Starting…';
+    var worker = navigator.serviceWorker.controller;
+    // The parent page holds the Roblox session, so Roblox requests the worker can't make itself
+    // (a web view, or engine files when the CDN is blocked) are passed up to it.
+    navigator.serviceWorker.addEventListener('message', function (event) {
+      var msg = event.data;
+      if (!msg || msg.type !== 'webblox-fetch' || !event.ports[0]) return;
+      var transfer = [event.ports[0]];
+      if (msg.body && msg.body.byteLength) transfer.push(msg.body);
+      window.parent.postMessage(msg, '*', transfer);
+    });
+    navigator.serviceWorker.startMessages();
+    if (worker) {
+      worker.postMessage({ type: 'webblox-relay-ready' });
+      worker.postMessage({ type: 'webblox-warm', signIn: /[?&]signin=1/.test(location.search) });
+    }
+    window.addEventListener('message', function (event) {
+      var msg = event.data;
+      if (event.source !== window.parent || !msg || msg.type !== 'webblox-play' || typeof msg.path !== 'string') return;
+      try {
+        Object.keys(msg.local || {}).forEach(function (key) { localStorage.setItem(key, msg.local[key]); });
+        Object.keys(msg.session || {}).forEach(function (key) { sessionStorage.setItem(key, msg.session[key]); });
+      } catch (e) {}
+      location.replace('./' + msg.path.replace(/^[./]+/, ''));
+    });
+    window.parent.postMessage({ type: 'webblox-host-ready' }, '*');
+  })();
+  ]]></script>
+</body>
+</html>

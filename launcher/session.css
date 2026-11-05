@@ -1,0 +1,161 @@
+@font-face { font-family: 'Builder Sans'; src: url('../assets/loading/BuilderSans-Regular.otf') format('opentype'); font-weight: 400; font-display: swap; }
+@font-face { font-family: 'Builder Sans'; src: url('../assets/loading/BuilderSans-Medium.otf') format('opentype'); font-weight: 500; font-display: swap; }
+@font-face { font-family: 'Builder Sans'; src: url('../assets/loading/BuilderSans-Bold.otf') format('opentype'); font-weight: 700; font-display: swap; }
+
+.session-prompt {
+  --session-gutter: 24px;
+  position: fixed;
+  inset: 0;
+  z-index: 2147483000;
+  display: grid;
+  grid-template-rows: 64px minmax(0, 1fr);
+  overflow-y: auto;
+  color: var(--text, #f7f7f8);
+  background: var(--bg, #121215);
+  font: 400 17px/var(--leading, 1.4) var(--font, 'Builder Sans', system-ui, sans-serif);
+  -webkit-font-smoothing: antialiased;
+}
+
+.session-prompt * { box-sizing: border-box; }
+
+.session-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 0 var(--session-gutter);
+  background: var(--nav, #121215);
+  border-bottom: 1px solid var(--line, #292a31);
+}
+
+.session-logo {
+  position: relative;
+  flex: none;
+  width: 132px;
+  aspect-ratio: 2418 / 366;
+  color: var(--text, #f7f7f8);
+}
+
+.session-logo::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: currentColor;
+  -webkit-mask: url('logo.png') center / 100% 100% no-repeat;
+  mask: url('logo.png') center / 100% 100% no-repeat;
+}
+
+.session-logo svg {
+  position: absolute;
+  left: 69.148%;
+  top: 0;
+  width: 15.095%;
+  height: 100%;
+}
+
+.session-switch {
+  padding: 6px 10px;
+  margin-right: -10px;
+  color: var(--muted, #bcbec8);
+  font-size: 16px;
+  text-decoration: none;
+  white-space: nowrap;
+  border-radius: 8px;
+  transition: color 120ms ease-out, background-color 120ms ease-out;
+}
+
+.session-switch:hover { color: var(--text, #f7f7f8); background: var(--raised, #191a1f); }
+
+.session-switch:focus-visible,
+.session-submit:focus-visible { outline: 2px solid var(--text, #f7f7f8); outline-offset: 2px; }
+
+.session-body {
+  display: grid;
+  gap: 16px;
+  align-self: center;
+  justify-self: center;
+  width: min(100%, 400px + var(--session-gutter) * 2);
+  padding: 24px var(--session-gutter) 88px;
+}
+
+.session-body h1 {
+  margin: 0;
+  font-size: 24px;
+  font-weight: 700;
+  line-height: 1.25;
+  letter-spacing: 0;
+}
+
+.session-field { display: grid; gap: 8px; }
+
+.session-field label { font-weight: 500; }
+
+.session-field input {
+  width: 100%;
+  height: 44px;
+  padding: 0 14px;
+  color: var(--text, #f7f7f8);
+  font: inherit;
+  background: var(--raised, #191a1f);
+  border: 1px solid var(--line, #292a31);
+  border-radius: 8px;
+  transition: border-color 120ms ease-out;
+}
+
+.session-field input:hover { border-color: var(--line-strong, #30323a); }
+
+.session-field input:focus-visible { border-color: var(--text, #f7f7f8); outline: 0; }
+
+.session-field input[aria-invalid='true'] { border-color: var(--danger, #eb7973); }
+
+.session-error { margin: 0; color: var(--danger, #eb7973); }
+
+.session-error:empty { display: none; }
+
+.session-submit {
+  min-height: 44px;
+  padding: 0 22px;
+  color: #fff;
+  font: inherit;
+  font-weight: 700;
+  background: var(--action, #335fff);
+  border: 0;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background-color 120ms ease-out, transform 120ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.session-submit:hover:not(:disabled) { background: var(--action-hover, #4069ff); }
+
+.session-submit:active:not(:disabled) { transform: scale(0.98); }
+
+.session-submit:disabled {
+  color: var(--muted, #bcbec8);
+  background: var(--hover, #282931);
+  cursor: not-allowed;
+}
+
+.session-secondary {
+  color: var(--text, #f7f7f8);
+  background: var(--raised, #191a1f);
+  border: 1px solid var(--line, #292a31);
+}
+
+.session-secondary:hover:not(:disabled) { background: var(--hover, #282931); }
+
+.session-or {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 4px 0;
+  color: var(--muted, #bcbec8);
+  font-size: 15px;
+}
+
+.session-or::before,
+.session-or::after { content: ''; flex: 1; height: 1px; background: var(--line, #292a31); }
+
+@media (max-width: 720px) {
+  .session-prompt { --session-gutter: 16px; }
+  .session-body { align-self: start; padding-top: 32px; }
+}

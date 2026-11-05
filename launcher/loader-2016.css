@@ -1,0 +1,373 @@
+@font-face {
+  font-family: 'Source Sans 2016';
+  src: url('loader-2016/SourceSansPro-Regular.ttf') format('truetype');
+  font-weight: 400;
+  font-display: block;
+}
+
+@font-face {
+  font-family: 'Source Sans 2016';
+  src: url('loader-2016/SourceSansPro-Bold.ttf') format('truetype');
+  font-weight: 700;
+  font-display: block;
+}
+
+html[data-loader='2016'] #loading-overlay {
+  background: none;
+  pointer-events: none;
+  transition: none;
+}
+
+html[data-loader='2016'] #loading-overlay > :not(.loading-error-panel) {
+  display: none;
+}
+
+html[data-loader='2016'] #loading-overlay.loading-failed .loading-error-panel:not([hidden]) {
+  position: fixed;
+  top: 0;
+  left: 25%;
+  display: flex;
+  width: 50%;
+  min-height: 0;
+  max-height: none;
+  height: 80px;
+  box-sizing: border-box;
+  align-items: center;
+  justify-content: center;
+  background: #fd4448;
+  animation: none;
+}
+
+html[data-loader='2016'] .loading-error-header,
+html[data-loader='2016'] .loading-error-divider,
+html[data-loader='2016'] #loading-error-leave {
+  display: none;
+}
+
+html[data-loader='2016'] .loading-error-body {
+  display: block;
+  min-height: 0;
+  padding: 0;
+}
+
+html[data-loader='2016'] .loading-error-copy {
+  display: block;
+  overflow: visible;
+  color: #fff;
+  font: 700 11.9332px / 14px 'Source Sans 2016', sans-serif;
+  text-align: center;
+}
+
+html[data-loader='2016'] #loading-error-message,
+html[data-loader='2016'] #loading-error-code {
+  display: inline;
+}
+
+#loader-2016 {
+  position: fixed;
+  z-index: 9;
+  inset: 0;
+  overflow: hidden;
+  color: #fff;
+  font-family: 'Source Sans 2016', sans-serif;
+  font-kerning: normal;
+  font-weight: 400;
+}
+
+#loader-2016.l16-leaving {
+  pointer-events: none;
+}
+
+#loader-2016 [hidden] {
+  display: none !important;
+}
+
+.l16-background,
+.l16-texture {
+  position: absolute;
+  inset: 0;
+}
+
+.l16-background {
+  background: #2d2d2d;
+}
+
+.l16-texture {
+  background: url('loader-2016/darkLoadingTexture.png') 0 0 / 512px 512px repeat;
+}
+
+.l16-info {
+  position: absolute;
+  bottom: 40px;
+  left: 100px;
+  width: 40%;
+  height: 110px;
+}
+
+.l16-place,
+.l16-creator {
+  position: absolute;
+  left: 0;
+  width: 100%;
+}
+
+.l16-place {
+  top: 0;
+  display: flex;
+  height: 80px;
+  align-items: flex-end;
+}
+
+.l16-creator {
+  top: 80px;
+  height: 30px;
+}
+
+#loader-2016 #loading-experience-title,
+#loader-2016 #loading-experience-creator {
+  all: unset;
+  position: relative;
+  top: 0.5px;
+  display: block;
+  width: 100%;
+  overflow-wrap: anywhere;
+  color: #fff;
+  text-align: left;
+  text-shadow: -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000;
+}
+
+#loader-2016:not(.l16-ready) #loading-experience-title {
+  visibility: hidden;
+}
+
+#loader-2016 #loading-experience-creator::before {
+  content: 'By ';
+}
+
+.l16-message {
+  position: absolute;
+  bottom: 40px;
+  left: 25%;
+  display: flex;
+  width: 50%;
+  height: 80px;
+  align-items: center;
+  justify-content: center;
+}
+
+#loader-2016 #status {
+  all: unset;
+  display: block;
+  width: 100%;
+  color: #fff;
+  font-size: 15.1154px;
+  font-weight: 700;
+  line-height: 18px;
+  text-align: center;
+  white-space: pre-line;
+}
+
+#loading-overlay.loading-failed ~ #loader-2016 #status {
+  visibility: hidden;
+}
+
+.l16-graphics {
+  position: absolute;
+  right: 105px;
+  bottom: 45px;
+  width: 120px;
+  height: 120px;
+}
+
+.l16-circle {
+  position: absolute;
+  inset: 0;
+  background: url('loader-2016/loadingCircle.png') center / 100% 100% no-repeat;
+  animation: l16-spin 2s linear infinite;
+}
+
+.l16-loading {
+  position: absolute;
+  top: 0;
+  left: 28px;
+  display: flex;
+  width: 64px;
+  height: 120px;
+  align-items: center;
+  font-size: 15.1154px;
+  line-height: 18px;
+}
+
+.l16-close {
+  position: absolute;
+  top: 5px;
+  right: 5px;
+  width: 32px;
+  height: 32px;
+}
+
+#loader-2016 #loading-cancel {
+  all: unset;
+  display: block;
+  width: 32px;
+  height: 32px;
+  background: url('loader-2016/cancelButton.png') center / 100% 100% no-repeat;
+  opacity: 0;
+  pointer-events: none;
+}
+
+#loader-2016 #loading-cancel.l16-active {
+  cursor: pointer;
+  pointer-events: auto;
+}
+
+#loader-2016 #loading-cancel:focus-visible {
+  outline: 2px solid #fff;
+  outline-offset: 2px;
+}
+
+#loader-2016.l16-mobile .l16-info {
+  bottom: 10px;
+  left: 20px;
+}
+
+#loader-2016.l16-mobile .l16-graphics {
+  right: 5px;
+  bottom: 5px;
+  width: 70px;
+  height: 70px;
+}
+
+#loader-2016.l16-mobile .l16-loading {
+  left: 12px;
+  width: 56px;
+  height: 70px;
+  font-size: 10.3421px;
+  line-height: 12px;
+}
+
+html[data-loader='2016'][data-loader-variant='console'] #loading-overlay.loading-failed .loading-error-panel:not([hidden]) {
+  left: 0;
+  width: 100%;
+  height: 144px;
+  background: rgb(0 0 0 / 50%);
+}
+
+html[data-loader='2016'][data-loader-variant='console'] #loading-overlay.loading-failed .loading-error-panel:not([hidden])::before {
+  position: absolute;
+  top: 32px;
+  left: 22.8125%;
+  width: 96px;
+  height: 79px;
+  background: url('loader-2016/ErrorIconSmall.png') center / 100% 100% no-repeat;
+  content: '';
+}
+
+html[data-loader='2016'][data-loader-variant='console'] .loading-error-body {
+  position: absolute;
+  top: 0;
+  left: 30%;
+  display: flex;
+  width: 40%;
+  height: 144px;
+  align-items: center;
+  justify-content: center;
+}
+
+html[data-loader='2016'][data-loader-variant='console'] .loading-error-copy {
+  font-size: 29.4352px;
+  line-height: 36px;
+}
+
+#loader-2016.l16-console .l16-graphics {
+  right: 105px;
+  bottom: 45px;
+  width: 140px;
+  height: 140px;
+}
+
+#loader-2016.l16-console .l16-creator {
+  left: 72px;
+}
+
+#loader-2016.l16-console #loading-experience-creator::before {
+  content: none;
+}
+
+.l16-by,
+.l16-creator-icon {
+  position: absolute;
+  top: 80px;
+  display: none;
+}
+
+.l16-has-creator .l16-by,
+.l16-has-creator .l16-creator-icon {
+  display: block;
+}
+
+.l16-by {
+  left: 0;
+  width: 36px;
+  height: 30px;
+}
+
+.l16-by-text {
+  position: relative;
+  top: 0.5px;
+  overflow-wrap: anywhere;
+  text-shadow: -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000;
+}
+
+.l16-creator-icon {
+  left: 38px;
+  width: 30px;
+  height: 30px;
+  background: url('loader-2016/RobloxIcon32.png') center / 100% 100% no-repeat;
+}
+
+#loader-2016 .l16-close.l16-cancel-label {
+  top: 32px;
+  right: 32px;
+  width: 83px;
+  height: 83px;
+}
+
+#loader-2016.l16-console #loading-cancel {
+  width: 83px;
+  height: 83px;
+  background-image: url('loader-2016/BButton.png');
+  cursor: pointer;
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.l16-cancel-text {
+  position: absolute;
+  top: 37px;
+  right: 131px;
+  color: #fff;
+  font: 400 49.2312px / 54px Arial, 'Liberation Sans', Helvetica, sans-serif;
+  white-space: nowrap;
+}
+
+.l16-cancel-text.l16-canceling {
+  right: 32px;
+}
+
+.l16-console-close {
+  position: absolute;
+  z-index: 10;
+  top: 5px;
+  right: 5px;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 0;
+  background: url('loader-2016/cancelButton.png') center / 100% 100% no-repeat;
+  cursor: pointer;
+}
+
+@keyframes l16-spin {
+  to { rotate: 360deg; }
+}
