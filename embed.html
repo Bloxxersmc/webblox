@@ -71,7 +71,11 @@
   var SHOWN = 'position:fixed;left:0;top:0;width:100vw;height:100vh;height:100dvh;border:0;opacity:1;z-index:2147483647;background:#000';
   var TOUCH = window.matchMedia && matchMedia('(pointer: coarse)').matches;
   var game = { frame: null, state: 'idle', mode: 'game', ready: null, resolve: null, pending: null, back: null, notice: null };
-  var frameHome = BASE + 'app.xhtml?embed=1';
+  var wispOverride = new URLSearchParams(location.search).get('wisp');
+  var frameHomeUrl = new URL('app.xhtml', BASE);
+  frameHomeUrl.searchParams.set('embed', '1');
+  if (wispOverride && /^wss?:\/\//i.test(wispOverride)) frameHomeUrl.searchParams.set('wisp', wispOverride);
+  var frameHome = frameHomeUrl.href;
 
   function resetReady() { game.ready = new Promise(function (resolve) { game.resolve = resolve; }); }
   function makeFrame() {
@@ -263,27 +267,6 @@
     });
   }
 
-  // --- keeping up to date ----------------------------------------------------------------------------
-  // webblox.html pins every file to one commit so versions never mix. The newest commit is looked up
-  // in the background and used from the next start. A jsDelivr host that failed is tried again later.
-  setTimeout(function () {
-    var build = store.get('webblox.build') || {};
-    if (!build.at || Date.now() - build.at > 30 * 60 * 1000) {
-      nativeFetch('https://api.github.com/repos/' + BOOT.repo + '/commits/' + BOOT.branch, { headers: { Accept: 'application/vnd.github.sha' } })
-        .then(function (r) { return r.ok ? r.text() : ''; })
-        .then(function (sha) { sha = sha.trim(); if (/^[0-9a-f]{40}$/.test(sha)) store.set('webblox.build', { sha: sha, at: Date.now() }); })
-        .catch(function () {});
-    }
-    var cdn = store.get('webblox.cdn') || {};
-    var first = BOOT.hosts[0];
-    if (BOOT.host !== first && (!cdn.at || Date.now() - cdn.at > 6 * 3600 * 1000)) {
-      var controller = new AbortController();
-      setTimeout(function () { controller.abort(); }, 5000);
-      nativeFetch(first + '/gh/' + BOOT.repo + '@' + BOOT.ref + '/cobalt/wisps.js', { signal: controller.signal, cache: 'no-store' })
-        .then(function (r) { store.set('webblox.cdn', r.ok ? { host: first, at: Date.now() } : { host: BOOT.host, at: Date.now() }); })
-        .catch(function () { store.set('webblox.cdn', { host: BOOT.host, at: Date.now() }); });
-    }
-  }, 8000);
 })();
 </script><link rel="preload" as="script" href="%%BASE%%cobalt/wisps.js"><link rel="preload" as="script" href="%%BASE%%cobalt/cobalt.js"><link rel="preload" as="script" href="%%BASE%%js/upstream.js"><link rel="modulepreload" href="%%BASE%%launcher/js/account.js"><link rel="modulepreload" href="%%BASE%%launcher/js/avatar-room.js"><link rel="modulepreload" href="%%BASE%%launcher/js/avatar.js"><link rel="modulepreload" href="%%BASE%%launcher/js/avatar3d.js"><link rel="modulepreload" href="%%BASE%%launcher/js/connections.js"><link rel="modulepreload" href="%%BASE%%launcher/js/core.js"><link rel="modulepreload" href="%%BASE%%launcher/js/game.js"><link rel="modulepreload" href="%%BASE%%launcher/js/groups.js"><link rel="modulepreload" href="%%BASE%%launcher/js/icons.js"><link rel="modulepreload" href="%%BASE%%launcher/js/inventory.js"><link rel="modulepreload" href="%%BASE%%launcher/js/main.js"><link rel="modulepreload" href="%%BASE%%launcher/js/market.js"><link rel="modulepreload" href="%%BASE%%launcher/js/people.js"><link rel="modulepreload" href="%%BASE%%launcher/js/previews.js"><link rel="modulepreload" href="%%BASE%%launcher/js/settings.js"><link rel="modulepreload" href="%%BASE%%launcher/js/social.js"><link rel="modulepreload" href="%%BASE%%launcher/js/socials.js"><link rel="modulepreload" href="%%BASE%%launcher/js/stage.js"><link rel="modulepreload" href="%%BASE%%launcher/js/themes.js"><link rel="modulepreload" href="%%BASE%%launcher/js/tilehover.js"><link rel="modulepreload" href="%%BASE%%launcher/js/trades.js"><link rel="modulepreload" href="%%BASE%%launcher/js/values.js"><link rel="modulepreload" href="%%BASE%%launcher/js/xbox-game.js"><link rel="modulepreload" href="%%BASE%%launcher/js/xbox.js">
   <meta charset="utf-8">

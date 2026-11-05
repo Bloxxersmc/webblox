@@ -23,91 +23,20 @@
   <p id="boot-text">Loading WebBlox…</p>
 </div>
 <script>
-// WebBlox in one file. It fetches WebBlox from jsDelivr and writes it into this page, so you stay on
-// this file the whole time. Every file comes from one commit, so versions never mix. If a jsDelivr
-// host is slow or blocked, another one takes over, and the one that worked is used from then on.
+// Load the deployed app from this origin so its service worker and Wisp settings share one URL.
 (function () {
   'use strict';
-  var REPO = 'sealiee11/webblox', BRANCH = 'jsdelivr-probe';
-  var HOSTS = ['https://cdn.jsdelivr.net', 'https://gcore.jsdelivr.net', 'https://fastly.jsdelivr.net'];
-  var TAKE_OVER_MS = 2500;
-  var store = {
-    get: function (key) { try { return JSON.parse(localStorage.getItem(key)); } catch (e) { return null; } },
-    set: function (key, value) { try { localStorage.setItem(key, JSON.stringify(value)); } catch (e) {} },
-  };
-  var preferred = (store.get('webblox.cdn') || {}).host;
-  var hosts = HOSTS.slice();
-  if (HOSTS.indexOf(preferred) > 0) { hosts.splice(hosts.indexOf(preferred), 1); hosts.unshift(preferred); }
-
-  function load(ref, host) {
-    var base = host + '/gh/' + REPO + '@' + ref + '/';
-    return fetch(base + 'embed.html', { cache: ref === BRANCH ? 'no-cache' : 'default' }).then(function (r) {
-      if (!r.ok) throw new Error(host.replace(/^https?:\/\//, '') + ' answered ' + r.status);
-      return r.text().then(function (html) {
-        if (html.indexOf('%%BASE%%') < 0) throw new Error(host.replace(/^https?:\/\//, '') + ' sent something else');
-        return { base: base, host: host, ref: ref, html: html };
-      });
-    });
-  }
-
-  // The preferred host first; the next one joins in if it hasn't answered after a moment or fails.
-  function race(ref) {
-    return new Promise(function (resolve, reject) {
-      var started = 0, failed = 0, done = false, timer = 0;
-      function next() {
-        clearTimeout(timer);
-        if (done || started >= hosts.length) return;
-        var host = hosts[started++];
-        load(ref, host).then(function (result) {
-          if (done) return;
-          done = true;
-          clearTimeout(timer);
-          resolve(result);
-        }, function (error) {
-          if (++failed === hosts.length) reject(error); else next();
-        });
-        timer = setTimeout(next, TAKE_OVER_MS);
-      }
-      next();
-    });
-  }
-
-  // The branch's newest commit, from GitHub. jsDelivr can take hours to notice a new commit on a branch.
-  function newest() {
-    return fetch('https://api.github.com/repos/' + REPO + '/commits/' + BRANCH, { headers: { Accept: 'application/vnd.github.sha' } })
-      .then(function (r) { return r.ok ? r.text() : ''; })
-      .then(function (sha) {
-        sha = sha.trim();
-        if (!/^[0-9a-f]{40}$/.test(sha)) throw new Error('no commit');
-        store.set('webblox.build', { sha: sha, at: Date.now() });
-        return sha;
-      });
-  }
-
+  var BASE = location.origin + '/';
   function start() {
-    var build = store.get('webblox.build') || {};
-    var known = /^[0-9a-f]{40}$/.test(build.sha || '') ? build.sha : '';
-    // First visit: ask GitHub for the branch's newest commit (about 0.1 s) rather than load the branch
-    // by name, which jsDelivr can keep mapping to an older commit for hours after a new one.
-    var pick = known ? Promise.resolve(known) : Promise.race([
-      newest().catch(function () { return ''; }),
-      new Promise(function (resolve) { setTimeout(function () { resolve(''); }, 800); }),
-    ]);
-    return pick.then(function (sha) {
-      var ref = sha || BRANCH;
-      return race(ref).catch(function (error) {
-        // A remembered commit that stopped working, or a branch name mapped to a commit without the app.
-        return newest().then(function (fresh) {
-          return fresh !== ref ? race(fresh) : race(BRANCH);
-        }, function () {
-          if (ref === BRANCH) throw error;
-          return race(BRANCH);
-        });
-      });
-    }).then(function (result) {
-      if (result.host !== preferred) store.set('webblox.cdn', { host: result.host, at: Date.now() });
-      var boot = { base: result.base, host: result.host, hosts: HOSTS, repo: REPO, branch: BRANCH, ref: result.ref };
-      var html = result.html.split('%%BOOT%%').join(JSON.stringify(boot).replace(/</g, '\\u003c')).split('%%BASE%%').join(result.base);
+    return fetch(BASE + 'embed.html', { cache: 'no-store' }).then(function (response) {
+      if (!response.ok) throw new Error('embed.html answered ' + response.status);
+      return response.text();
+    }).then(function (source) {
+      if (source.indexOf('%%BASE%%') < 0 || source.indexOf('%%BOOT%%') < 0) {
+        throw new Error('embed.html is missing its deployment placeholders');
+      }
+      var boot = { base: BASE };
+      var html = source.split('%%BOOT%%').join(JSON.stringify(boot).replace(/</g, '\\u003c')).split('%%BASE%%').join(BASE);
       document.open();
       document.write(html);
       document.close();

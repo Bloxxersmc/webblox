@@ -69,7 +69,10 @@
         Object.keys(msg.local || {}).forEach(function (key) { localStorage.setItem(key, msg.local[key]); });
         Object.keys(msg.session || {}).forEach(function (key) { sessionStorage.setItem(key, msg.session[key]); });
       } catch (e) {}
-      location.replace('./' + msg.path.replace(/^[./]+/, ''));
+      var target = new URL('./' + msg.path.replace(/^[./]+/, ''), location.href);
+      var wisp = new URLSearchParams(location.search).get('wisp');
+      if (wisp && /^wss?:\/\//i.test(wisp) && !target.searchParams.has('wisp')) target.searchParams.set('wisp', wisp);
+      location.replace(target.href);
     });
     window.parent.postMessage({ type: 'webblox-host-ready' }, '*');
   })();
