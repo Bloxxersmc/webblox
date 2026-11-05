@@ -33,11 +33,11 @@ const OPTION_NAMES = {
 const SWITCHES = [['Enabled', 'Disabled'], ['Discoverable', 'NotDiscoverable']];
 
 const GRAPHICS_KEY = 'webblox.settings';
-const GRAPHICS_DEFAULTS = { v: 2, fps: 60, resolution: 100, mesh: -1, msaa: '1', grass: true, ui: 'sharp', distance: 0, quality: -1, renderer: 'webgpu', fullbright: false };
+const GRAPHICS_DEFAULTS = { v: 2, fps: 60, resolution: 75, mesh: 0, msaa: '1', grass: false, ui: 'standard', distance: 0, quality: -1, renderer: 'webgpu', fullbright: false, texture: 25, postfx: false };
 const PRESETS = [
-  ['performance', 'Performance', { fps: 60, resolution: 75, mesh: 0, msaa: '1', grass: false, ui: 'standard', distance: 0, quality: 1 }],
-  ['balanced', 'Balanced', { fps: 60, resolution: 100, mesh: -1, msaa: '1', grass: true, ui: 'sharp', distance: 0, quality: 1 }],
-  ['quality', 'Quality', { fps: 60, resolution: 200, mesh: 3, msaa: '4', grass: true, ui: 'sharp', distance: 2, quality: 10 }],
+  ['performance', 'Performance', { fps: 60, resolution: 75, mesh: 0, msaa: '1', grass: false, ui: 'standard', distance: 0, quality: 1, texture: 25, postfx: false }],
+  ['balanced', 'Balanced', { fps: 60, resolution: 100, mesh: -1, msaa: '1', grass: true, ui: 'sharp', distance: 0, quality: 1, texture: 50, postfx: true }],
+  ['quality', 'Quality', { fps: 60, resolution: 200, mesh: 3, msaa: '4', grass: true, ui: 'sharp', distance: 2, quality: 10, texture: 100, postfx: true }],
 ];
 const GRAPHICS_ROWS = [
   ['renderer', 'Renderer', [['webgpu', 'WebGPU'], ['webgl', 'WebGL']]],
@@ -48,6 +48,8 @@ const GRAPHICS_ROWS = [
   ['mesh', 'Mesh detail', [[-1, 'Default'], [0, 'Lowest'], [1, 'Low'], [2, 'Medium'], [3, 'High']]],
   ['msaa', 'Anti-aliasing', [['', 'Default'], ['1', 'Off'], ['2', '2x'], ['4', '4x']]],
   ['distance', 'View distance', [[0, 'Default'], [1, 'Far'], [2, 'Very Far']]],
+  ['texture', 'Texture scale', [[12, '12%'], [25, '25%'], [50, '50%'], [100, '100%']]],
+  ['postfx', 'Post effects (bloom, blur)'],
   ['grass', 'Grass'],
   ['fullbright', 'Fullbright'],
 ];
