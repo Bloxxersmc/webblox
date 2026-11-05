@@ -373,7 +373,9 @@
     };
     const settingsFlags = settings => {
       const flags = {};
-      flags.FIntRenderForceVideoMemorySize = String(Math.min(2147483647, Math.round((navigator.deviceMemory || 4) * 268435456)));
+      // Texture memory budget. Quarter size unless the texture setting is 100% (or ?stock=1), so heavy games stay inside the browser's memory limit.
+      const lean = settings.texture < 100 && !new URLSearchParams(location.search).has('stock');
+      flags.FIntRenderForceVideoMemorySize = String(Math.min(2147483647, Math.round((navigator.deviceMemory || 4) * (lean ? 67108864 : 268435456))));
       Object.assign(flags, VIEW_DISTANCE_FLAGS[settings.distance] || {});
       if (settings.resolution > 0 && settings.resolution < 100) {
         const dpr = (window.devicePixelRatio || 1) * interfaceScale(settings);
