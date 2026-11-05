@@ -462,6 +462,14 @@
     return consoleError.apply(this, args);
   };
 
+  // If the page had to fall back from WebGPU to WebGL, show why.
+  try {
+    const gpuWhy = sessionStorage.getItem('webblox.webgpuFailed');
+    if (gpuWhy) setTimeout(() => noteFailure('GPU', 'webgpu failed, fell back to webgl', gpuWhy, ''), 0);
+    const mode = new URLSearchParams(location.search).get('renderer') || (gpuWhy ? 'webgl (fallback)' : 'webgpu (default)');
+    setTimeout(() => noteFailure('GPU', 'renderer in use', mode, 'navigator.gpu=' + (navigator.gpu ? 'yes' : 'no')), 0);
+  } catch {}
+
   async function handleGameJoin(url, method, headers, body) {
     ({ url, body } = launcherJoin(url, body));
     const r = await wisp(url, { method, headers: spoofNativeUa(headers), body });
