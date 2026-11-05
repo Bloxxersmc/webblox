@@ -2837,7 +2837,8 @@ struct V { @builtin(position) pos: vec4f, @location(0) uv: vec2f };
     const param = new URLSearchParams(location.search).get('renderer');
     if (param) return param;
     try {
-      if (sessionStorage.getItem('webblox.webgpuFailed')) return 'webgl';
+      // A WebGPU failure only forces WebGL for two minutes (long enough for the fallback reload), then WebGPU is tried again.
+      if (sessionStorage.getItem('webblox.webgpuFailed') && Date.now() - Number(sessionStorage.getItem('webblox.webgpuFailedAt') || 0) < 120000) return 'webgl';
       const saved = JSON.parse(localStorage.getItem('webblox.settings'));
       if (saved && typeof saved.renderer === 'string') return saved.renderer;
     } catch (error) {}

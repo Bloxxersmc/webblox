@@ -696,7 +696,7 @@
         try {
           window.__webgpuOnFailure = reason => {
             console.warn('[local] WebGPU failed, using WebGL:', reason);
-            try { sessionStorage.setItem('webblox.webgpuFailed', String(reason).slice(0, 300)); } catch (e) {}
+            try { sessionStorage.setItem('webblox.webgpuFailed', String(reason).slice(0, 300)); sessionStorage.setItem('webblox.webgpuFailedAt', String(Date.now())); } catch (e) {}
             const fallback = new URL(location.href);
             fallback.searchParams.set('renderer', 'webgl');
             location.replace(fallback);

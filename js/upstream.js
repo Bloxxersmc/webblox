@@ -464,7 +464,7 @@
 
   // If the page had to fall back from WebGPU to WebGL, show why.
   try {
-    const gpuWhy = sessionStorage.getItem('webblox.webgpuFailed');
+    const gpuWhy = (Date.now() - Number(sessionStorage.getItem('webblox.webgpuFailedAt') || 0) < 120000) ? sessionStorage.getItem('webblox.webgpuFailed') : '';
     if (gpuWhy) setTimeout(() => noteFailure('GPU', 'webgpu failed, fell back to webgl', gpuWhy, ''), 0);
     const mode = new URLSearchParams(location.search).get('renderer') || (gpuWhy ? 'webgl (fallback)' : 'webgpu (default)');
     setTimeout(() => noteFailure('GPU', 'renderer in use', mode, 'navigator.gpu=' + (navigator.gpu ? 'yes' : 'no')), 0);
