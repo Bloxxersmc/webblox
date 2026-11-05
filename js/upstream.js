@@ -375,7 +375,7 @@
   }
 
   // Shows why Roblox refused a join right on the page, for browsers where the console is locked.
-  async function reportJoin(status, json, url, body) {
+  async function reportJoin(status, json, url, body, headers) {
     const ok = !!(json && json.joinScript);
     let sent = {};
     try { sent = JSON.parse(new TextDecoder().decode(body)) || {}; } catch {}
@@ -391,7 +391,10 @@
     const text = (ok ? 'Join OK. Roblox status: ' : 'Join refused. Roblox status: ') + (json && json.status != null ? json.status : r_(status)) +
       ' | message: ' + ((json && json.message) || 'none') + ' | ' + who + ' | join type: ' + mode +
       ' | placeId: ' + sent.placeId + ' | gameId: ' + (sent.gameId || 'none') + ' | teleport: ' + !!sent.isTeleport +
-      '\nrelay exit IP: ' + exitIp + ' | page: ' + location.href;
+      '\nrelay exit IP: ' + exitIp + ' | page: ' + location.href +
+      '\nbody: ' + JSON.stringify(sent).slice(0, 600) +
+      '\ncookie names: ' + jarNames(new URL(url).hostname).join(', ') +
+      '\nheaders: ' + Object.keys(headers || {}).filter(k => !/^(cookie|authorization)$/i.test(k)).map(k => k + '=' + String(headers[k]).slice(0, 80)).join(' ; ');
     console.log(ok ? '[gamejoin-ok]' : '[gamejoin-failed]', text);
     try {
       let box = document.getElementById('webblox-join-error');
@@ -419,7 +422,7 @@
       hasJoinScript: !!(json && json.joinScript),
       cookies: jarNames(new URL(url).hostname),
     }));
-    reportJoin(r.status, json, url, body);
+    reportJoin(r.status, json, url, body, headers);
     if (r.status === 200 && json && json.joinScript && !json.joinScript.gameFqdn) {
       const fqdn = qdmuxFqdn(json.joinScript);
       if (fqdn) {
