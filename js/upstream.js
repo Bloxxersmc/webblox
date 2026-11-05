@@ -375,7 +375,7 @@
   }
 
   // Shows why Roblox refused a join right on the page, for browsers where the console is locked.
-  async function reportJoin(status, json, url, body, headers) {
+  async function reportJoin(status, json, url, body, headers, res) {
     const ok = !!(json && json.joinScript);
     let sent = {};
     try { sent = JSON.parse(new TextDecoder().decode(body)) || {}; } catch {}
@@ -392,6 +392,8 @@
       ' | message: ' + ((json && json.message) || 'none') + ' | ' + who + ' | join type: ' + mode +
       ' | placeId: ' + sent.placeId + ' | gameId: ' + (sent.gameId || 'none') + ' | teleport: ' + !!sent.isTeleport +
       '\nrelay exit IP: ' + exitIp + ' | page: ' + location.href +
+      (ok ? '' : '\nHTTP ' + status + ' | challenge: ' + ((res && res.headers && res.headers.get && (res.headers.get('rblx-challenge-type') || '')) || 'none') +
+        ' | reply: ' + (() => { try { return new TextDecoder().decode(res.body).replace(/\s+/g, ' ').slice(0, 300); } catch { return '?'; } })()) +
       '\nbody: ' + JSON.stringify(sent).slice(0, 600) +
       '\ncookie names: ' + jarNames(new URL(url).hostname).join(', ') +
       '\nheaders: ' + Object.keys(headers || {}).filter(k => !/^(cookie|authorization)$/i.test(k)).map(k => k + '=' + String(headers[k]).slice(0, 80)).join(' ; ');
@@ -411,6 +413,34 @@
   }
   const r_ = status => 'HTTP ' + status;
 
+  // Shows the most recent failing requests on screen (server errors and relay failures), for when the console is unavailable.
+  const netFailures = [];
+  function noteFailure(code, method, where, detail) {
+    try {
+      netFailures.push(new Date().toLocaleTimeString() + '  ' + code + '  ' + method + ' ' + where + (detail ? '  ' + String(detail).replace(/\s+/g, ' ').slice(0, 120) : ''));
+      if (netFailures.length > 6) netFailures.shift();
+      let box = document.getElementById('webblox-net-log');
+      if (!box) {
+        box = document.createElement('div');
+        box.id = 'webblox-net-log';
+        box.style.cssText = 'position:fixed;left:8px;top:8px;max-width:calc(100% - 16px);z-index:2147483646;background:rgba(40,25,0,.92);color:#fff;font:11px/1.35 monospace;padding:6px 8px;border-radius:6px;white-space:pre-wrap;word-break:break-all;pointer-events:none';
+        (document.body || document.documentElement).appendChild(box);
+      }
+      box.textContent = 'Failed requests (newest last):\n' + netFailures.join('\n');
+      clearTimeout(box._t);
+      box._t = setTimeout(() => box.remove(), 90000);
+    } catch {}
+  }
+
+  // Also surface uncaught errors and error-level console output in the same on-screen box.
+  window.addEventListener('error', e => noteFailure('JS', 'error', String(e.message || 'error'), (e.filename || '').split('/').pop() + ':' + (e.lineno || '')));
+  window.addEventListener('unhandledrejection', e => noteFailure('JS', 'promise', String((e.reason && (e.reason.message || e.reason)) || 'rejected'), ''));
+  const consoleError = console.error;
+  console.error = function (...args) {
+    try { noteFailure('LOG', 'error', args.map(x => (x && x.message) || String(x)).join(' ').slice(0, 220), ''); } catch {}
+    return consoleError.apply(this, args);
+  };
+
   async function handleGameJoin(url, method, headers, body) {
     ({ url, body } = launcherJoin(url, body));
     const r = await wisp(url, { method, headers: spoofNativeUa(headers), body });
@@ -422,7 +452,7 @@
       hasJoinScript: !!(json && json.joinScript),
       cookies: jarNames(new URL(url).hostname),
     }));
-    reportJoin(r.status, json, url, body, headers);
+    reportJoin(r.status, json, url, body, headers, r);
     if (r.status === 200 && json && json.joinScript && !json.joinScript.gameFqdn) {
       const fqdn = qdmuxFqdn(json.joinScript);
       if (fqdn) {
@@ -488,6 +518,7 @@
       try { prefetchLocations(JSON.parse(new TextDecoder().decode(r.body))); } catch {}
     }
     if (r.status >= 400) console.log(`[proxy] → ${r.status} ${method} ${target.hostname}${target.pathname}`);
+    if (r.status >= 500 || r.status === 429) noteFailure(r.status, method, target.hostname + target.pathname, (() => { try { return new TextDecoder().decode(r.body); } catch { return ''; } })());
 
     if (key) {
       let ttl = cacheTtl(method, r.headers);
@@ -511,6 +542,7 @@
       port.postMessage({ ok: true, ...r }, [r.body]);
     } catch (err) {
       console.error('[proxy]', msg.method, msg.url, '-', err.message || err);
+      try { const u = new URL(msg.url); noteFailure('ERR', msg.method, u.hostname + u.pathname, err.message || err); } catch {}
       port.postMessage({ ok: false, error: String(err.message || err) });
     }
   });

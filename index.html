@@ -385,14 +385,15 @@
           flags['DFIntCSGLevelOfDetailSwitchingDistance' + level] = String((Math.min(3, Math.max(0, settings.mesh - i)) + 1) * 250);
         });
       }
+      const stock = new URLSearchParams(location.search).has('stock');   // ?stock=1 skips the texture and post-effect tweaks
       // Texture scale: each skipped mip level halves texture width and height (25% = 2 levels, 12% = 3).
       const skipMips = { 100: 0, 50: 1, 25: 2, 12: 3 }[settings.texture];
-      if (skipMips) {
+      if (skipMips && !stock) {
         flags.FIntDebugTextureManagerSkipMips = String(skipMips);
         flags.DFFlagTextureQualityOverrideEnabled = 'True';
         flags.DFIntTextureQualityOverride = String(Math.max(0, 3 - skipMips));
       }
-      if (!settings.postfx) {                       // bloom, blur, sun rays, colour correction, depth of field
+      if (!settings.postfx && !stock) {                       // bloom, blur, sun rays, colour correction, depth of field
         flags.FFlagDisablePostFx = 'True';
         flags.FIntRobloxGuiBlurIntensity = '0';
       }
