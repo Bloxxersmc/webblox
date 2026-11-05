@@ -2834,6 +2834,7 @@ struct V { @builtin(position) pos: vec4f, @location(0) uv: vec2f };
   };
 
   const rendererChoice = () => {
+    window.__webbloxGlBuild = 'ttl';
     const param = new URLSearchParams(location.search).get('renderer');
     if (param) return param;
     try {

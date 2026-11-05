@@ -684,6 +684,7 @@
 
       var version = 'version-75f1039cb4964863';
       window.__webbloxEngineVersion = version;
+      window.__webbloxIndexBuild = 'gpudebug';
       localStorage.setItem('clientVersion_prod', JSON.stringify({
         clientVersionUpload: version,
         version: '',
@@ -699,6 +700,17 @@
             try { sessionStorage.setItem('webblox.webgpuFailed', String(reason).slice(0, 300)); sessionStorage.setItem('webblox.webgpuFailedAt', String(Date.now())); } catch (e) {}
             const fallback = new URL(location.href);
             fallback.searchParams.set('renderer', 'webgl');
+            // With &gpudebug=1 in the link, keep the reason on screen for 20 seconds before switching so it can be read or copied.
+            if (new URLSearchParams(location.search).has('gpudebug')) {
+              const text = 'WebGPU failed: ' + String(reason && (reason.stack || reason.message) || reason).slice(0, 900);
+              const note = document.createElement('div');
+              note.style.cssText = 'position:fixed;inset:0;z-index:2147483647;background:#111;color:#fff;font:14px/1.4 monospace;padding:16px;white-space:pre-wrap;word-break:break-word;overflow:auto';
+              note.textContent = text + '\n\nTap to copy. Switching to WebGL in 20 seconds...';
+              note.addEventListener('click', () => { try { navigator.clipboard.writeText(text); } catch (e) {} });
+              document.body.appendChild(note);
+              setTimeout(() => location.replace(fallback), 20000);
+              return;
+            }
             location.replace(fallback);
           };
           if (window.__webgpuWorkerWanted()) await window.__webgpuStartWorker(document.getElementById('canvas'), window.__webgpuOnFailure);
