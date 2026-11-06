@@ -101,13 +101,33 @@
 
   // ---- Roblox captcha (Arkose Labs FunCaptcha) ----
   const ARKOSE_LOGIN_KEY = '476068BF-9607-4799-B53D-966BE98E2B81';
-  async function arkoseKey() {
+  async function arkoseKey(actionType) {
+    // Roblox publishes separate Arkose public keys for different actions. A key
+    // for WebLogin is not interchangeable with the normal Login key: using the
+    // wrong one can make Arkose's session-creation request fail with
+    // API_REQUEST_ERROR before a puzzle is ever shown.
+    const action = String(actionType || 'Login').toLowerCase().replace(/[^a-z]/g, '');
+    const preferred = action.includes('web')
+      ? ['ACTION_TYPE_WEB_LOGIN', 'ACTION_TYPE_LOGIN']
+      : ['ACTION_TYPE_LOGIN', 'ACTION_TYPE_WEB_LOGIN'];
     try {
-      const r = await Promise.race([rbxApi('GET', 'https://apis.roblox.com/captcha/v1/metadata'), new Promise((_, no) => setTimeout(() => no(new Error('timeout')), 8000))]);
-      const k = r.data && r.data.funCaptchaPublicKeys;
-      if (k) return k.ACTION_TYPE_WEB_LOGIN || k.ACTION_TYPE_LOGIN || ARKOSE_LOGIN_KEY;
-    } catch {}
-    return ARKOSE_LOGIN_KEY;
+      const r = await Promise.race([
+        rbxApi('GET', 'https://apis.roblox.com/captcha/v1/metadata'),
+        new Promise((_, no) => setTimeout(() => no(new Error('timeout')), 8000))
+      ]);
+      const keys = r.data && r.data.funCaptchaPublicKeys;
+      if (keys) {
+        for (const name of preferred) {
+          const value = keys[name];
+          if (typeof value === 'string' && value.trim()) return value.trim();
+        }
+      }
+    } catch (error) {
+      console.warn('[captcha] Could not retrieve Roblox captcha metadata:', error && error.message || error);
+    }
+    // This is Roblox's legacy normal-login key, so only use it as the fallback
+    // for normal Login challenges. Do not silently use it for a WebLogin flow.
+    return action.includes('web') ? '' : ARKOSE_LOGIN_KEY;
   }
   // Shows the Arkose puzzle and resolves to { token } | { error }.
   function runArkose(publicKey, blob, stage) {
@@ -184,7 +204,8 @@
   // Solves the captcha, tells Roblox, then retries the login. Resolves to { ok } | { error } | { challenge }.
   async function solveCaptchaAndLogin(user, password, c, stage, host) {
     if (stage) stage('getting captcha key');
-    const key = await arkoseKey();
+    const key = await arkoseKey(c.actionType);
+    if (!key) return { error: 'Roblox did not provide an Arkose key for this captcha action. Use Sign in with Roblox or Sign in with a code instead.' };
     const solved = await runCaptchaPopup(key, c.dataExchangeBlob, stage, host);
     if (solved.error) return { error: solved.error };
     if (stage) stage('sending answer to Roblox');
