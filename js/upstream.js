@@ -103,23 +103,29 @@
   const ARKOSE_LOGIN_KEY = '476068BF-9607-4799-B53D-966BE98E2B81';
   async function arkoseKey() {
     try {
-      const r = await rbxApi('GET', 'https://apis.roblox.com/captcha/v1/metadata');
+      const r = await Promise.race([rbxApi('GET', 'https://apis.roblox.com/captcha/v1/metadata'), new Promise((_, no) => setTimeout(() => no(new Error('timeout')), 8000))]);
       const k = r.data && r.data.funCaptchaPublicKeys;
       if (k) return k.ACTION_TYPE_WEB_LOGIN || k.ACTION_TYPE_LOGIN || ARKOSE_LOGIN_KEY;
     } catch {}
     return ARKOSE_LOGIN_KEY;
   }
   // Shows the Arkose puzzle and resolves to { token } | { error }.
-  function runArkose(publicKey, blob) {
+  function runArkose(publicKey, blob, stage) {
     return new Promise(resolve => {
-      let settled = false;
-      const finish = v => { if (!settled) { settled = true; resolve(v); } };
+      let settled = false, ready = false;
+      const finish = v => { if (!settled) { settled = true; clearTimeout(guard); console.log('[captcha] result', v.error || 'token received'); resolve(v); } };
+      const guard = setTimeout(() => finish({ error: ready ? 'Captcha timed out.' : 'The captcha never started (stuck at: ' + lastStage + '). The browser is most likely blocking Arkose because this page is cross-origin isolated, or Arkose rejected this domain. Use "Sign in with a code" or the cookie option instead.' }), 25000);
+      let lastStage = 'loading script';
+      const mark = t => { lastStage = t; console.log('[captcha]', t); if (stage) stage(t); };
+      mark('loading script');
       const cb = 'webbloxArkose' + Date.now();
       window[cb] = enforcement => {
+        mark('script loaded');
         enforcement.setConfig({
           mode: 'lightbox',
           data: { blob },
-          onReady: () => enforcement.run(),
+          onReady: () => { ready = true; mark('showing puzzle'); enforcement.run(); },
+          onShown: () => mark('puzzle shown'),
           onCompleted: r => finish({ token: r.token }),
           onError: r => finish({ error: 'The captcha failed to load' + (r && r.error && r.error.error ? ' (' + r.error.error + ')' : '') + '. Roblox may only allow its captcha on roblox.com. Use "Sign in with a code" or the cookie option instead.' }),
           onFailed: () => finish({ error: 'Captcha answer was wrong. Try again.' }),
@@ -130,16 +136,19 @@
       const sc = document.createElement('script');
       sc.src = 'https://roblox-api.arkoselabs.com/v2/' + publicKey + '/api.js';
       sc.async = true;
+      sc.onload = () => mark('script file loaded, starting');
       sc.setAttribute('data-callback', cb);
       sc.onerror = () => finish({ error: 'Couldn\u2019t load the captcha from Roblox\u2019s provider. Use "Sign in with a code" or the cookie option instead.' });
       document.head.appendChild(sc);
     });
   }
   // Solves the captcha, tells Roblox, then retries the login. Resolves to { ok } | { error } | { challenge }.
-  async function solveCaptchaAndLogin(user, password, c) {
+  async function solveCaptchaAndLogin(user, password, c, stage) {
+    if (stage) stage('getting captcha key');
     const key = await arkoseKey();
-    const solved = await runArkose(key, c.dataExchangeBlob);
+    const solved = await runArkose(key, c.dataExchangeBlob, stage);
     if (solved.error) return { error: solved.error };
+    if (stage) stage('sending answer to Roblox');
     const meta = { unifiedCaptchaId: c.unifiedCaptchaId, captchaToken: solved.token, actionType: c.actionType };
     const cont = await rbxApi('POST', 'https://apis.roblox.com/challenge/v1/continue', { challengeId: c.outerId, challengeType: 'captcha', challengeMetadata: JSON.stringify(meta) });
     if (cont.status !== 200) return { error: apiMessage(cont) };
@@ -282,7 +291,7 @@
         let result = await signInWithPassword(u, pw);
         if (result.captcha) {
           button.textContent = 'Waiting for captcha\u2026';
-          result = await solveCaptchaAndLogin(u, pw, result.captcha);
+          result = await solveCaptchaAndLogin(u, pw, result.captcha, t => { button.textContent = 'Captcha: ' + t + '\u2026'; });
         }
         if (result.ok) return await done(m => { loginError.textContent = m; });
         if (result.challenge) {
