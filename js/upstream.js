@@ -47,12 +47,107 @@
     }
   }
 
+  // ---- Native Roblox sign-in (username + password, 2-step verification) over the relay ----
+  // The session cookie Roblox sets lands in the relay's cookie jar like any other cookie.
+  let rbxCsrf = '';
+  async function rbxApi(method, url, json, extra) {
+    const send = async () => {
+      const headers = { origin: 'https://www.roblox.com', referer: 'https://www.roblox.com/', accept: 'application/json', ...(extra || {}) };
+      if (rbxCsrf) headers['x-csrf-token'] = rbxCsrf;
+      const init = { method, headers, redirect: 'follow' };
+      if (json !== undefined) {
+        headers['content-type'] = 'application/json';
+        init.body = new TextEncoder().encode(JSON.stringify(json)).buffer;
+      }
+      const r = await cb_fetch(url, init);
+      const text = new TextDecoder().decode(await r.arrayBuffer());
+      let data = null;
+      try { data = JSON.parse(text); } catch {}
+      return { status: r.status, headers: r.headers, data, text };
+    };
+    let res = await send();
+    const token = res.headers && res.headers.get && res.headers.get('x-csrf-token');
+    if (res.status === 403 && token && token !== rbxCsrf) { rbxCsrf = token; res = await send(); }
+    return res;
+  }
+
+  const apiMessage = res => (res.data && res.data.errors && res.data.errors[0] && res.data.errors[0].message) || ('Roblox replied with HTTP ' + res.status + '.');
+  const b64json = text => { try { return JSON.parse(atob(text)); } catch { return null; } };
+
+  const loginRequest = (user, password, challenge) => rbxApi('POST', 'https://auth.roblox.com/v2/login',
+    { ctype: user.includes('@') ? 'Email' : 'Username', cvalue: user, password },
+    challenge ? { 'rblx-challenge-id': challenge.id, 'rblx-challenge-type': challenge.type, 'rblx-challenge-metadata': challenge.metadata } : undefined);
+
+  // Resolves to { ok: true } | { error } | { challenge } (a 2-step verification the person must complete).
+  async function signInWithPassword(user, password) {
+    const res = await loginRequest(user, password);
+    if (res.status === 200) return { ok: true };
+    const type = res.headers.get('rblx-challenge-type');
+    const id = res.headers.get('rblx-challenge-id');
+    if (id && type) {
+      if (type !== 'twostepverification') return { error: 'Roblox asked for a "' + type + '" check, which can\u2019t be shown here. Use "Sign in with a code" above, or the cookie option below.', captcha: true };
+      const meta = b64json(res.headers.get('rblx-challenge-metadata') || '');
+      if (!meta || !meta.userId || !meta.challengeId) return { error: 'Roblox asked for 2-step verification but the details were unreadable. Use the cookie option below.' };
+      return { challenge: { outerId: id, userId: meta.userId, challengeId: meta.challengeId, actionType: meta.actionType || 'Login' } };
+    }
+    return { error: apiMessage(res), status: res.status };
+  }
+
+  const METHOD_PATH = { email: 'email', authenticator: 'authenticator', sms: 'sms', recoverycode: 'recovery-codes', recoverycodes: 'recovery-codes' };
+  async function twoStepMethods(c) {
+    const res = await rbxApi('GET', 'https://twostepverification.roblox.com/v1/users/' + c.userId + '/configuration?challengeId=' + encodeURIComponent(c.challengeId) + '&actionType=' + c.actionType);
+    const list = res.data && Array.isArray(res.data.methods) ? res.data.methods.map(m => String(m.mediaType || '').toLowerCase()).filter(m => METHOD_PATH[m]) : [];
+    return list.length ? list : ['authenticator', 'email'];
+  }
+  const sendTwoStepCode = (c, method) => rbxApi('POST', 'https://twostepverification.roblox.com/v1/users/' + c.userId + '/challenges/' + METHOD_PATH[method] + '/send-code', { challengeId: c.challengeId, actionType: c.actionType });
+
+  async function finishTwoStep(user, password, c, method, code) {
+    const verify = await rbxApi('POST', 'https://twostepverification.roblox.com/v1/users/' + c.userId + '/challenges/' + METHOD_PATH[method] + '/verify', { challengeId: c.challengeId, actionType: c.actionType, code });
+    if (verify.status !== 200 || !verify.data || !verify.data.verificationToken) return { error: apiMessage(verify) };
+    const meta = { rememberDevice: false, actionType: c.actionType, verificationToken: verify.data.verificationToken, challengeId: c.challengeId };
+    const cont = await rbxApi('POST', 'https://apis.roblox.com/challenge/v1/continue', { challengeId: c.outerId, challengeType: 'twostepverification', challengeMetadata: JSON.stringify(meta) });
+    if (cont.status !== 200) return { error: apiMessage(cont) };
+    const res = await loginRequest(user, password, { id: c.outerId, type: 'twostepverification', metadata: btoa(JSON.stringify(meta)) });
+    return res.status === 200 ? { ok: true } : { error: apiMessage(res) };
+  }
+
+  // Quick Sign-in: Roblox shows a code, the person approves it on a device that is already signed in.
+  // No password and no captcha, which is why it works where the password form gets a captcha every time.
+  const QUICK_BASE = 'https://apis.roblox.com/auth-token-service/v1/login/';
+  const QUICK_STATUS_TEXT = {
+    Created: 'Waiting for you to enter the code on your other device\u2026',
+    UserLinked: 'Code entered. Confirm the sign-in on the other device.',
+    Validated: 'Approved. Signing in\u2026',
+  };
+  async function quickSignIn(ctl) {
+    const created = await rbxApi('POST', QUICK_BASE + 'create', {});
+    if (created.status !== 200 || !created.data || !created.data.code || !created.data.privateKey) return { error: apiMessage(created) };
+    const { code, privateKey } = created.data;
+    ctl.onCode(code);
+    const deadline = Date.now() + 5 * 60 * 1000;
+    while (!ctl.cancelled && Date.now() < deadline) {
+      await new Promise(r => setTimeout(r, 2000));
+      if (ctl.cancelled) break;
+      const st = await rbxApi('POST', QUICK_BASE + 'status', { code, privateKey });
+      const status = st.data && st.data.status;
+      if (status && QUICK_STATUS_TEXT[status]) ctl.onStatus(QUICK_STATUS_TEXT[status]);
+      if (status === 'Validated') {
+        const res = await rbxApi('POST', 'https://auth.roblox.com/v2/login', { ctype: 'AuthToken', cvalue: code, password: privateKey });
+        return res.status === 200 ? { ok: true } : { error: apiMessage(res) };
+      }
+      if (status === 'Cancelled') return { error: 'Quick Sign-in was cancelled on the other device. If it said it couldn\u2019t match your location, the other device has to be on the same Wi-Fi as this computer.' };
+      if (status === 'CodeInvalid') return { error: 'That code expired. Start Quick Sign-in again.' };
+    }
+    if (ctl.cancelled) { rbxApi('POST', QUICK_BASE + 'cancel', { code, privateKey }).catch(() => {}); return { cancelled: true }; }
+    return { error: 'The code timed out. Start Quick Sign-in again.' };
+  }
+
   const askForSession = expired => new Promise(resolve => {
-    const form = document.createElement('form');
-    form.className = 'session-prompt';
-    form.noValidate = true;
-    form.setAttribute('aria-labelledby', 'session-title');
-    form.innerHTML =
+    const root = document.createElement('div');
+    root.className = 'session-prompt';
+    root.setAttribute('role', 'dialog');
+    root.setAttribute('aria-labelledby', 'session-title');
+    root.innerHTML =
       '<header class="session-top">' +
         '<div class="session-logo" role="img" aria-label="WebBlox">' + MARK + '</div>' +
         (window.WEBLOX_SERVER ? '<a class="session-switch" href="/?mode=node">Use local server</a>' : '') +
@@ -60,24 +155,140 @@
       '<div class="session-body">' +
         '<h1 id="session-title">' + (expired ? 'Your session expired' : 'Sign in') + '</h1>' +
         '<button class="session-submit session-roblox" type="button">Sign in with Roblox</button>' +
-        '<p class="session-or"><span>or use a cookie</span></p>' +
-        '<div class="session-field">' +
-          '<label for="session-cookie">.ROBLOSECURITY</label>' +
-          '<input id="session-cookie" name="cookie" type="password" autocomplete="off" spellcheck="false" aria-describedby="session-error">' +
-          '<p class="session-error" id="session-error" role="alert"></p>' +
+        '<p class="session-or"><span>or</span></p>' +
+        '<div class="session-quick">' +
+          '<button class="session-submit session-quick-start" type="button">Sign in with a code</button>' +
+          '<div class="session-quick-panel" hidden>' +
+            '<p class="session-note">On a device that\u2019s already signed in to Roblox, open the Quick Log In page (roblox.com/crossdevicelogin/ConfirmCode, or Settings in the Roblox app) and enter this code:</p>' +
+            '<p class="session-code-big" aria-live="polite">\u2026</p>' +
+            '<p class="session-note session-quick-status"></p>' +
+            '<p class="session-error session-quick-error" role="alert"></p>' +
+            '<button class="session-link session-quick-cancel" type="button">Cancel</button>' +
+          '</div>' +
         '</div>' +
-        '<button class="session-submit session-secondary" type="submit">Sign in with cookie</button>' +
+        '<p class="session-or"><span>or use your password</span></p>' +
+        '<form class="session-login" novalidate>' +
+          '<div class="session-field"><label for="session-user">Username or email</label>' +
+            '<input id="session-user" name="username" type="text" autocomplete="username" autocapitalize="none" spellcheck="false"></div>' +
+          '<div class="session-field"><label for="session-pass">Password</label>' +
+            '<input id="session-pass" name="password" type="password" autocomplete="current-password"></div>' +
+          '<p class="session-error session-login-error" role="alert"></p>' +
+          '<button class="session-submit" type="submit">Sign in</button>' +
+        '</form>' +
+        '<form class="session-2sv" novalidate hidden>' +
+          '<p class="session-note">Roblox needs to verify it\u2019s you.</p>' +
+          '<div class="session-field"><label for="session-method">Verify with</label><select id="session-method"></select></div>' +
+          '<button class="session-submit session-secondary session-send" type="button">Send me a code</button>' +
+          '<div class="session-field"><label for="session-code">Code</label>' +
+            '<input id="session-code" name="code" type="text" inputmode="numeric" autocomplete="one-time-code" spellcheck="false"></div>' +
+          '<p class="session-error session-2sv-error" role="alert"></p>' +
+          '<button class="session-submit" type="submit">Verify</button>' +
+        '</form>' +
+        '<p class="session-or"><span>or use a cookie</span></p>' +
+        '<form class="session-cookie" novalidate>' +
+          '<div class="session-field"><label for="session-cookie">.ROBLOSECURITY</label>' +
+            '<input id="session-cookie" name="cookie" type="password" autocomplete="off" spellcheck="false" aria-describedby="session-error">' +
+            '<p class="session-error" id="session-error" role="alert"></p></div>' +
+          '<button class="session-submit session-secondary" type="submit">Sign in with cookie</button>' +
+        '</form>' +
       '</div>';
-    // Roblox's own sign-in screen (username and password, Quick Sign In) runs in Roblox's launcher.
-    // The single-file launcher opens it in its game frame; elsewhere it's the engine page.
-    form.querySelector('.session-roblox').addEventListener('click', () => {
-      if (window.webbloxSignIn) return window.webbloxSignIn();
-      const next = new URLSearchParams({ launcher: 'roblox', signin: '1' });
-      for (const name of ['mode', 'wisp', 'flagset']) if (PAGE_PARAMS.has(name)) next.set(name, PAGE_PARAMS.get(name));
-      location.href = '/?' + next;
+    const $ = sel => root.querySelector(sel);
+    const loginForm = $('.session-login'), twoForm = $('.session-2sv'), cookieForm = $('.session-cookie');
+    const loginError = $('.session-login-error'), twoError = $('.session-2sv-error');
+    const user = $('#session-user'), pass = $('#session-pass'), code = $('#session-code'), method = $('#session-method');
+
+    const done = async fail => {
+      // Roblox answered "signed in"; make sure the session really is usable before closing the prompt.
+      if (!hasSession()) return fail('Roblox accepted the sign-in but the session wasn\u2019t saved. Use the cookie option below.');
+      if (!(await sessionAccepted())) { forgetSession(); return fail('Roblox didn\u2019t accept the new session. Use the cookie option below.'); }
+      try {
+        Object.keys(localStorage).filter(key => /^webblox\.launcher\.(home|shell)/.test(key)).forEach(key => localStorage.removeItem(key));
+      } catch {}
+      root.remove();
+      resolve();
+    };
+
+    let pending = null;
+    loginForm.onsubmit = async e => {
+      e.preventDefault();
+      loginError.textContent = '';
+      const u = user.value.trim(), pw = pass.value;
+      if (!u || !pw) { loginError.textContent = 'Enter your username and password.'; return; }
+      const button = loginForm.querySelector('button');
+      button.disabled = true;
+      button.textContent = 'Signing in\u2026';
+      try {
+        const result = await signInWithPassword(u, pw);
+        if (result.ok) return await done(m => { loginError.textContent = m; });
+        if (result.challenge) {
+          pending = result.challenge;
+          const methods = await twoStepMethods(pending);
+          method.replaceChildren(...methods.map(m => Object.assign(document.createElement('option'), { value: m, textContent: ({ email: 'Email', authenticator: 'Authenticator app', sms: 'Text message', recoverycode: 'Recovery code', recoverycodes: 'Recovery code' })[m] || m })));
+          loginForm.hidden = true;
+          twoForm.hidden = false;
+          syncSend();
+          code.focus();
+          return;
+        }
+        loginError.textContent = result.error;
+      } catch (err) {
+        loginError.textContent = 'Couldn\u2019t reach Roblox (' + (err && err.message || 'network error') + '). Check the connection or use the cookie option.';
+      } finally {
+        button.disabled = false;
+        button.textContent = 'Sign in';
+      }
+    };
+
+    const send = $('.session-send');
+    const syncSend = () => { send.hidden = !/^(email|sms)$/.test(method.value); };
+    method.addEventListener('change', syncSend);
+    send.addEventListener('click', async () => {
+      twoError.textContent = '';
+      send.disabled = true;
+      try {
+        const res = await sendTwoStepCode(pending, method.value);
+        twoError.textContent = res.status === 200 ? 'Code sent. Enter it below.' : apiMessage(res);
+      } catch { twoError.textContent = 'Couldn\u2019t reach Roblox.'; }
+      send.disabled = false;
     });
-    const input = form.querySelector('input');
-    const error = form.querySelector('.session-error');
+    twoForm.onsubmit = async e => {
+      e.preventDefault();
+      twoError.textContent = '';
+      const value = code.value.trim();
+      if (!value) { twoError.textContent = 'Enter the code.'; return; }
+      const button = twoForm.querySelector('button[type=submit]');
+      button.disabled = true;
+      try {
+        const result = await finishTwoStep(user.value.trim(), pass.value, pending, method.value, value);
+        if (result.ok) return await done(m => { twoError.textContent = m; });
+        twoError.textContent = result.error;
+      } catch { twoError.textContent = 'Couldn\u2019t reach Roblox.'; }
+      button.disabled = false;
+    };
+
+    const quickStart = $('.session-quick-start'), quickPanel = $('.session-quick-panel');
+    const quickCode = $('.session-code-big'), quickStatus = $('.session-quick-status'), quickError = $('.session-quick-error');
+    let quick = null;
+    const quickReset = () => { quickPanel.hidden = true; quickStart.hidden = false; quick = null; };
+    quickStart.addEventListener('click', async () => {
+      quickError.textContent = '';
+      quickStatus.textContent = '';
+      quickCode.textContent = '\u2026';
+      quickStart.hidden = true;
+      quickPanel.hidden = false;
+      const ctl = quick = { cancelled: false, onCode: c => { quickCode.textContent = c; }, onStatus: t => { quickStatus.textContent = t; } };
+      let result;
+      try { result = await quickSignIn(ctl); } catch (err) { result = { error: 'Couldn\u2019t reach Roblox (' + (err && err.message || 'network error') + ').' }; }
+      if (result.cancelled) return;
+      if (result.ok) return await done(m => { quickReset(); loginError.textContent = m; });
+      quickReset();
+      loginError.textContent = result.error;
+    });
+    $('.session-quick-cancel').addEventListener('click', () => { if (quick) quick.cancelled = true; quickReset(); });
+
+    // .ROBLOSECURITY fallback
+    const input = cookieForm.querySelector('input');
+    const error = cookieForm.querySelector('.session-error');
     const fail = message => {
       error.textContent = message;
       input.setAttribute('aria-invalid', 'true');
@@ -87,8 +298,8 @@
       error.textContent = '';
       input.removeAttribute('aria-invalid');
     });
-    const submit = form.querySelector('.session-secondary');
-    form.onsubmit = async e => {
+    const submit = cookieForm.querySelector('button');
+    cookieForm.onsubmit = async e => {
       e.preventDefault();
       const v = input.value.trim().replace(/^\.ROBLOSECURITY=/, '');
       if (!v) return fail('Paste your .ROBLOSECURITY value.');
@@ -104,12 +315,21 @@
       try {
         Object.keys(localStorage).filter(key => /^webblox\.launcher\.(home|shell)/.test(key)).forEach(key => localStorage.removeItem(key));
       } catch {}
-      form.remove();
+      root.remove();
       resolve();
     };
+
+    // Roblox's own sign-in screen (the engine launcher, with Roblox's own security checks).
+    $('.session-roblox').addEventListener('click', () => {
+      if (window.webbloxSignIn) return window.webbloxSignIn();
+      const next = new URLSearchParams({ launcher: 'roblox', signin: '1' });
+      for (const name of ['mode', 'wisp', 'flagset', 'debug']) if (PAGE_PARAMS.has(name)) next.set(name, PAGE_PARAMS.get(name));
+      location.href = '/?' + next;
+    });
+
     const mount = () => {
-      document.body.appendChild(form);
-      input.focus();
+      document.body.appendChild(root);
+      user.focus();
     };
     const sheet = document.createElement('link');
     sheet.rel = 'stylesheet';
@@ -138,7 +358,7 @@
       if (!hasSession()) return;
       clearInterval(timer);
       const back = new URLSearchParams();
-      for (const name of ['mode', 'wisp', 'flagset']) if (PAGE_PARAMS.has(name)) back.set(name, PAGE_PARAMS.get(name));
+      for (const name of ['mode', 'wisp', 'flagset', 'debug']) if (PAGE_PARAMS.has(name)) back.set(name, PAGE_PARAMS.get(name));
       setTimeout(() => location.replace((self.__WB||'/')+'launcher/' + (back.size ? '?' + back : '')), 400);
     }, 500);
   }
@@ -555,6 +775,12 @@
       try { prefetchLocations(JSON.parse(new TextDecoder().decode(r.body))); } catch {}
     }
     if (r.status >= 400) console.log(`[proxy] → ${r.status} ${method} ${target.hostname}${target.pathname}`);
+    if (r.status >= 400 && r.status < 500 && /^(auth|twostepverification|apis|accountsettings)\.roblox\.com$/.test(target.hostname) && /login|auth|challenge|twostep|verif|ticket|token|captcha/i.test(target.pathname)) {
+      const bodyText = (() => { try { return new TextDecoder().decode(r.body); } catch { return ''; } })();
+      const isCsrfRetry = r.status === 403 && /Token Validation/i.test(bodyText);
+      if (!isCsrfRetry) noteFailure('AUTH ' + r.status, method, target.hostname + target.pathname,
+        'challenge=' + ((r.headers && r.headers.get && (r.headers.get('rblx-challenge-type') || '')) || 'none') + ' ' + bodyText);
+    }
     if (r.status >= 500 || r.status === 429) noteFailure(r.status, method, target.hostname + target.pathname, (() => { try { return new TextDecoder().decode(r.body); } catch { return ''; } })());
 
     if (key) {

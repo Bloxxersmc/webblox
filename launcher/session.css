@@ -155,6 +155,46 @@
 .session-or::before,
 .session-or::after { content: ''; flex: 1; height: 1px; background: var(--line, #292a31); }
 
+.session-body form { display: grid; gap: 16px; }
+.session-body form[hidden] { display: none; }
+.session-field select {
+  width: 100%;
+  height: 44px;
+  padding: 0 14px;
+  color: var(--text, #f7f7f8);
+  font: inherit;
+  background: var(--raised, #191a1f);
+  border: 1px solid var(--line, #292a31);
+  border-radius: 8px;
+}
+.session-quick { display: grid; gap: 12px; }
+.session-quick-panel { display: grid; gap: 10px; }
+.session-quick-panel[hidden] { display: none; }
+.session-code-big {
+  margin: 0;
+  padding: 14px;
+  text-align: center;
+  font-size: 34px;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  background: var(--raised, #191a1f);
+  border: 1px solid var(--line, #292a31);
+  border-radius: 8px;
+  user-select: all;
+}
+.session-note { margin: 0; color: var(--muted, #bcbec8); }
+.session-link {
+  padding: 8px;
+  color: var(--muted, #bcbec8);
+  font: inherit;
+  font-size: 15px;
+  background: none;
+  border: 0;
+  cursor: pointer;
+  text-decoration: underline;
+}
+.session-link:hover { color: var(--text, #f7f7f8); }
+
 @media (max-width: 720px) {
   .session-prompt { --session-gutter: 16px; }
   .session-body { align-self: start; padding-top: 32px; }
