@@ -113,7 +113,7 @@ const server = createServer(async (request, response) => {
     }
 
     const headers = {
-      ...ISOLATION_HEADERS,
+      ...(/[\\/]captcha\.html$/i.test(filePath) ? {} : ISOLATION_HEADERS),
       "Accept-Ranges": "bytes",
       "Cache-Control": /(?:\.html?|\.xhtml|\/sw\.js)$/i.test(filePath) ? "no-cache" : "public, max-age=3600",
       "Content-Length": range ? range.end - range.start + 1 : fileInfo.size,

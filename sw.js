@@ -425,6 +425,13 @@ self.addEventListener('fetch', event => {
   const { request } = event;
   if (!/^https?:/.test(request.url)) return;
   const url = new URL(request.url);
+  // Captcha: Arkose's own hosts go straight to the network, and captcha.html is served without isolation
+  // headers, because Arkose's puzzle iframe cannot load inside a cross-origin-isolated page.
+  if (/(^|\.)(arkoselabs\.com|funcaptcha\.com)$/.test(url.hostname)) return;
+  if (url.origin === self.location.origin && /\/captcha\.html$/.test(url.pathname)) {
+    event.respondWith(fetchOwn('captcha.html', { cache: 'no-cache' }).then(r => new Response(r.body, { status: r.status, headers: { 'Content-Type': TYPES.html, 'Cache-Control': 'no-cache' } })));
+    return;
+  }
   if (SETTINGS_URL.test(request.url)) { event.respondWith(settingsReply(request.url)); return; }
   const path = appPath(url);
   if (path === null) {

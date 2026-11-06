@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Roblox captcha</title>
+<style>
+  body { margin: 0; font: 15px system-ui, sans-serif; background: #232527; color: #fff; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; text-align: center; }
+  #c { min-height: 300px; width: 100%; max-width: 420px; }
+  #msg { padding: 12px 16px; color: #bdbebe; }
+</style>
+</head>
+<body>
+<p id="msg">Loading captcha…</p>
+<div id="c"></div>
+<script>
+// Runs on its own page with no cross-origin isolation, so Arkose's puzzle iframe is allowed to load.
+// The result goes back to the sign-in page through BroadcastChannel (and localStorage as a fallback).
+(() => {
+  const p = new URLSearchParams(location.hash.slice(1));
+  const id = p.get('id'), key = p.get('key'), blob = p.get('blob');
+  const msg = document.getElementById('msg');
+  let sent = false;
+  const send = data => {
+    sent = true;
+    const payload = { webbloxCaptcha: true, id, ...data };
+    try { const bc = new BroadcastChannel('webblox-captcha'); bc.postMessage(payload); bc.close(); } catch {}
+    try { localStorage.setItem('webblox-captcha-result', JSON.stringify({ ...payload, t: Date.now() })); } catch {}
+  };
+  addEventListener('pagehide', () => { if (!sent) send({ error: 'Captcha window was closed.' }); });
+  if (!id || !key) { msg.textContent = 'Missing captcha details. Close this window and try again.'; return; }
+  window.arkoseReady = enforcement => {
+    enforcement.setConfig({
+      mode: 'inline',
+      selector: '#c',
+      data: blob ? { blob } : undefined,
+      onReady: () => { msg.textContent = 'Solve the puzzle to finish signing in.'; enforcement.run(); },
+      onCompleted: r => { msg.textContent = 'Done. Closing…'; send({ token: r.token }); setTimeout(() => close(), 400); },
+      onFailed: () => { msg.textContent = 'Wrong answer. Try again.'; },
+      onError: r => {
+        const why = r && r.error && r.error.error ? ' (' + r.error.error + ')' : '';
+        msg.textContent = 'The captcha could not load' + why + '.';
+        send({ error: 'The captcha could not load' + why + '. Roblox may only allow it on roblox.com. Use "Sign in with a code" or the cookie option instead.' });
+      },
+    });
+  };
+  const s = document.createElement('script');
+  s.src = 'https://roblox-api.arkoselabs.com/v2/' + encodeURIComponent(key) + '/api.js';
+  s.async = true;
+  s.setAttribute('data-callback', 'arkoseReady');
+  s.onerror = () => { msg.textContent = 'Could not load the captcha script.'; send({ error: 'Could not load the captcha script from Arkose.' }); };
+  document.head.appendChild(s);
+})();
+</script>
+</body>
+</html>

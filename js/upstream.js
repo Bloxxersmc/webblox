@@ -142,11 +142,48 @@
       document.head.appendChild(sc);
     });
   }
+
+  // Runs the puzzle in a small popup (captcha.html) that is not cross-origin isolated, since Arkose cannot
+  // load inside this isolated page. Needs a real click to open, so it adds an "Open captcha" button.
+  function runCaptchaPopup(publicKey, blob, stage, host) {
+    return new Promise(resolve => {
+      const id = Date.now() + '-' + Math.random().toString(36).slice(2);
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'session-submit session-secondary';
+      btn.textContent = 'Open captcha';
+      (host || document.body).appendChild(btn);
+      let bc = null, timer = null, settled = false;
+      const finish = v => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        removeEventListener('storage', onStorage);
+        try { bc && bc.close(); } catch {}
+        btn.remove();
+        resolve(v);
+      };
+      const handle = d => {
+        if (!d || !d.webbloxCaptcha || d.id !== id) return;
+        if (d.token) finish({ token: d.token }); else finish({ error: d.error || 'Captcha failed.' });
+      };
+      const onStorage = e => { if (e.key === 'webblox-captcha-result' && e.newValue) { try { handle(JSON.parse(e.newValue)); } catch {} } };
+      try { bc = new BroadcastChannel('webblox-captcha'); bc.onmessage = e => handle(e.data); } catch {}
+      addEventListener('storage', onStorage);
+      timer = setTimeout(() => finish({ error: 'Captcha timed out. Press Sign in to try again.' }), 4 * 60 * 1000);
+      if (stage) stage('press Open captcha');
+      btn.onclick = () => {
+        const w = window.open('/captcha.html#' + new URLSearchParams({ id, key: publicKey, blob }), 'webblox-captcha', 'popup,width=480,height=680');
+        if (!w) return finish({ error: 'The popup was blocked. Allow popups for this site and press Sign in again.' });
+        if (stage) stage('solve it in the popup');
+      };
+    });
+  }
   // Solves the captcha, tells Roblox, then retries the login. Resolves to { ok } | { error } | { challenge }.
-  async function solveCaptchaAndLogin(user, password, c, stage) {
+  async function solveCaptchaAndLogin(user, password, c, stage, host) {
     if (stage) stage('getting captcha key');
     const key = await arkoseKey();
-    const solved = await runArkose(key, c.dataExchangeBlob, stage);
+    const solved = await runCaptchaPopup(key, c.dataExchangeBlob, stage, host);
     if (solved.error) return { error: solved.error };
     if (stage) stage('sending answer to Roblox');
     const meta = { unifiedCaptchaId: c.unifiedCaptchaId, captchaToken: solved.token, actionType: c.actionType };
@@ -291,7 +328,7 @@
         let result = await signInWithPassword(u, pw);
         if (result.captcha) {
           button.textContent = 'Waiting for captcha\u2026';
-          result = await solveCaptchaAndLogin(u, pw, result.captcha, t => { button.textContent = 'Captcha: ' + t + '\u2026'; });
+          result = await solveCaptchaAndLogin(u, pw, result.captcha, t => { button.textContent = 'Captcha: ' + t + '\u2026'; }, loginForm);
         }
         if (result.ok) return await done(m => { loginError.textContent = m; });
         if (result.challenge) {
