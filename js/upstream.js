@@ -85,12 +85,73 @@
     const type = res.headers.get('rblx-challenge-type');
     const id = res.headers.get('rblx-challenge-id');
     if (id && type) {
+      if (type === 'captcha') {
+        const cm = b64json(res.headers.get('rblx-challenge-metadata') || '');
+        if (!cm || !cm.unifiedCaptchaId || !cm.dataExchangeBlob) return { error: 'Roblox asked for a captcha but the details were unreadable. Use "Sign in with a code" above, or the cookie option below.', captcha: true };
+        return { captcha: { outerId: id, unifiedCaptchaId: cm.unifiedCaptchaId, dataExchangeBlob: cm.dataExchangeBlob, actionType: cm.actionType || 'Login' } };
+      }
       if (type !== 'twostepverification') return { error: 'Roblox asked for a "' + type + '" check, which can\u2019t be shown here. Use "Sign in with a code" above, or the cookie option below.', captcha: true };
       const meta = b64json(res.headers.get('rblx-challenge-metadata') || '');
       if (!meta || !meta.userId || !meta.challengeId) return { error: 'Roblox asked for 2-step verification but the details were unreadable. Use the cookie option below.' };
       return { challenge: { outerId: id, userId: meta.userId, challengeId: meta.challengeId, actionType: meta.actionType || 'Login' } };
     }
     return { error: apiMessage(res), status: res.status };
+  }
+
+
+  // ---- Roblox captcha (Arkose Labs FunCaptcha) ----
+  const ARKOSE_LOGIN_KEY = '476068BF-9607-4799-B53D-966BE98E2B81';
+  async function arkoseKey() {
+    try {
+      const r = await rbxApi('GET', 'https://apis.roblox.com/captcha/v1/metadata');
+      const k = r.data && r.data.funCaptchaPublicKeys;
+      if (k) return k.ACTION_TYPE_WEB_LOGIN || k.ACTION_TYPE_LOGIN || ARKOSE_LOGIN_KEY;
+    } catch {}
+    return ARKOSE_LOGIN_KEY;
+  }
+  // Shows the Arkose puzzle and resolves to { token } | { error }.
+  function runArkose(publicKey, blob) {
+    return new Promise(resolve => {
+      let settled = false;
+      const finish = v => { if (!settled) { settled = true; resolve(v); } };
+      const cb = 'webbloxArkose' + Date.now();
+      window[cb] = enforcement => {
+        enforcement.setConfig({
+          mode: 'lightbox',
+          data: { blob },
+          onReady: () => enforcement.run(),
+          onCompleted: r => finish({ token: r.token }),
+          onError: r => finish({ error: 'The captcha failed to load' + (r && r.error && r.error.error ? ' (' + r.error.error + ')' : '') + '. Roblox may only allow its captcha on roblox.com. Use "Sign in with a code" or the cookie option instead.' }),
+          onFailed: () => finish({ error: 'Captcha answer was wrong. Try again.' }),
+          onSuppress: () => finish({ error: 'Captcha was suppressed. Try again.' }),
+          onHide: () => setTimeout(() => finish({ error: 'Captcha was closed.' }), 500),
+        });
+      };
+      const sc = document.createElement('script');
+      sc.src = 'https://roblox-api.arkoselabs.com/v2/' + publicKey + '/api.js';
+      sc.async = true;
+      sc.setAttribute('data-callback', cb);
+      sc.onerror = () => finish({ error: 'Couldn\u2019t load the captcha from Roblox\u2019s provider. Use "Sign in with a code" or the cookie option instead.' });
+      document.head.appendChild(sc);
+    });
+  }
+  // Solves the captcha, tells Roblox, then retries the login. Resolves to { ok } | { error } | { challenge }.
+  async function solveCaptchaAndLogin(user, password, c) {
+    const key = await arkoseKey();
+    const solved = await runArkose(key, c.dataExchangeBlob);
+    if (solved.error) return { error: solved.error };
+    const meta = { unifiedCaptchaId: c.unifiedCaptchaId, captchaToken: solved.token, actionType: c.actionType };
+    const cont = await rbxApi('POST', 'https://apis.roblox.com/challenge/v1/continue', { challengeId: c.outerId, challengeType: 'captcha', challengeMetadata: JSON.stringify(meta) });
+    if (cont.status !== 200) return { error: apiMessage(cont) };
+    const res = await loginRequest(user, password, { id: c.outerId, type: 'captcha', metadata: btoa(JSON.stringify(meta)) });
+    if (res.status === 200) return { ok: true };
+    const type = res.headers.get('rblx-challenge-type'), id = res.headers.get('rblx-challenge-id');
+    if (id && type === 'twostepverification') {
+      const m = b64json(res.headers.get('rblx-challenge-metadata') || '');
+      if (m && m.userId && m.challengeId) return { challenge: { outerId: id, userId: m.userId, challengeId: m.challengeId, actionType: m.actionType || 'Login' } };
+    }
+    if (id && type === 'captcha') return { error: 'Roblox asked for another captcha. Press Sign in to try again.' };
+    return { error: apiMessage(res) };
   }
 
   const METHOD_PATH = { email: 'email', authenticator: 'authenticator', sms: 'sms', recoverycode: 'recovery-codes', recoverycodes: 'recovery-codes' };
@@ -218,7 +279,11 @@
       button.disabled = true;
       button.textContent = 'Signing in\u2026';
       try {
-        const result = await signInWithPassword(u, pw);
+        let result = await signInWithPassword(u, pw);
+        if (result.captcha) {
+          button.textContent = 'Waiting for captcha\u2026';
+          result = await solveCaptchaAndLogin(u, pw, result.captcha);
+        }
         if (result.ok) return await done(m => { loginError.textContent = m; });
         if (result.challenge) {
           pending = result.challenge;
