@@ -173,7 +173,9 @@
       timer = setTimeout(() => finish({ error: 'Captcha timed out. Press Sign in to try again.' }), 4 * 60 * 1000);
       if (stage) stage('press Open captcha');
       btn.onclick = () => {
-        const w = window.open('/captcha.html#' + new URLSearchParams({ id, key: publicKey, blob }), 'webblox-captcha', 'popup,width=480,height=680');
+        const captchaUrl = new URL('captcha.html', window.location.href);
+        captchaUrl.hash = new URLSearchParams({ id, key: publicKey, blob }).toString();
+        const w = window.open(captchaUrl.href, 'webblox-captcha', 'popup,width=480,height=680');
         if (!w) return finish({ error: 'The popup was blocked. Allow popups for this site and press Sign in again.' });
         if (stage) stage('solve it in the popup');
       };
