@@ -80,64 +80,6 @@
     })();
   </script>
   <script>
-    // Preserve useful exception details from engine/render workers. Browsers often
-    // stringify WebAssembly.Exception as only "[object WebAssembly.Exception]".
-    (function () {
-      function describeError(value) {
-        if (value == null || (typeof value !== 'object' && typeof value !== 'function')) return String(value);
-        var parts = [];
-        try { if (value.name) parts.push('name=' + value.name); } catch (e) {}
-        try { if (value.message) parts.push('message=' + value.message); } catch (e) {}
-        try { if (value.stack) parts.push('stack=' + String(value.stack).slice(0, 1800)); } catch (e) {}
-        try {
-          var keys = Object.getOwnPropertyNames(value).slice(0, 12);
-          keys.forEach(function (key) {
-            if (key === 'name' || key === 'message' || key === 'stack') return;
-            try { parts.push(key + '=' + String(value[key]).slice(0, 240)); } catch (e) {}
-          });
-        } catch (e) {}
-        return parts.length ? parts.join(' | ') : Object.prototype.toString.call(value);
-      }
-      window.__webbloxDescribeError = describeError;
-      window.__webbloxRuntimeInfo = function () {
-        var memory = window.Module && window.Module.wasmMemory;
-        return 'isolated=' + String(window.crossOriginIsolated) +
-          ' sharedArrayBuffer=' + String(typeof SharedArrayBuffer !== 'undefined') +
-          ' wasm=' + String(typeof WebAssembly !== 'undefined') +
-          ' wasmMemoryPages=' + (memory && memory.buffer ? Math.round(memory.buffer.byteLength / 65536) : 'unknown');
-      };
-      var NativeWorker = window.Worker;
-      if (NativeWorker) {
-        window.Worker = new Proxy(NativeWorker, {
-          construct: function (Target, args) {
-            var worker = Reflect.construct(Target, args, Target);
-            var workerUrl = String(args && args[0] || 'unknown worker');
-            worker.addEventListener('error', function (event) {
-              var detail = 'url=' + workerUrl + ' message=' + (event.message || 'worker error') +
-                ' file=' + (event.filename || '') + ':' + (event.lineno || 0) + ':' + (event.colno || 0) +
-                ' error=' + describeError(event.error);
-              console.error('[worker-diagnostic]', detail);
-              try { window._tl.push('[worker-diagnostic] ' + detail.slice(0, 1800)); } catch (e) {}
-            });
-            worker.addEventListener('messageerror', function (event) {
-              console.error('[worker-messageerror]', workerUrl, describeError(event));
-            });
-            return worker;
-          }
-        });
-      }
-      window.addEventListener('error', function (event) {
-        if (event && (event.error || event.message)) {
-          console.error('[window-diagnostic]', event.message || 'uncaught error', describeError(event.error),
-            (event.filename || '') + ':' + (event.lineno || 0) + ':' + (event.colno || 0), window.__webbloxRuntimeInfo());
-        }
-      }, true);
-      window.addEventListener('unhandledrejection', function (event) {
-        console.error('[promise-diagnostic]', describeError(event.reason), window.__webbloxRuntimeInfo());
-      });
-    })();
-  </script>
-  <script>
     (function(){
       if (window.WEBLOX_MODE !== 'node') return;
       var origin = location.origin;
@@ -390,7 +332,7 @@
 
     const SETTINGS_KEY = 'webblox.settings';
     const SETTINGS_VERSION = 2;
-    const DEFAULT_SETTINGS = { v: SETTINGS_VERSION, fps: 60, resolution: 75, mesh: 0, msaa: '1', grass: false, ui: 'standard', distance: 0, quality: -1, renderer: 'webgpu', fullbright: false, texture: 25, postfx: false };
+    const DEFAULT_SETTINGS = { v: SETTINGS_VERSION, fps: 60, resolution: 75, mesh: 0, msaa: '1', grass: false, ui: 'standard', distance: 0, quality: -1, renderer: 'webgl', fullbright: false, texture: 25, postfx: false };
     const PERFORMANCE_PRESET = { fps: 60, resolution: 75, mesh: 0, msaa: '1', grass: false, ui: 'standard' };
     const FULL_RESOLUTION = 200;
     const interfaceScale = settings => {
@@ -475,9 +417,7 @@
     const FLAG_SET_NAME = /^[a-z0-9][a-z0-9-]{0,40}$/;
     const flagSetName = () => {
       const name = new URLSearchParams(location.search).get('flagset');
-      // Start with Roblox's current live settings. The pinned snapshot remains
-      // available via ?flagset=pinned for controlled regression testing.
-      return name && FLAG_SET_NAME.test(name) ? name : 'live';
+      return name && FLAG_SET_NAME.test(name) ? name : 'pinned';
     };
     const loadFlagSet = async name => {
       try {
@@ -744,7 +684,7 @@
 
       var version = 'version-75f1039cb4964863';
       window.__webbloxEngineVersion = version;
-      window.__webbloxIndexBuild = 'wasm-diag-20261105a';
+      window.__webbloxIndexBuild = 'gpudebug2';
       localStorage.setItem('clientVersion_prod', JSON.stringify({
         clientVersionUpload: version,
         version: '',
@@ -757,6 +697,7 @@
         try {
           window.__webgpuOnFailure = reason => {
             console.warn('[local] WebGPU failed, using WebGL:', reason);
+            try { localStorage.setItem('webblox.lastGpuFail', new Date().toLocaleTimeString() + ' ' + String(reason && (reason.stack || reason.message) || reason).slice(0, 700)); } catch (e) {}
             try { sessionStorage.setItem('webblox.webgpuFailed', String(reason).slice(0, 300)); sessionStorage.setItem('webblox.webgpuFailedAt', String(Date.now())); } catch (e) {}
             const fallback = new URL(location.href);
             fallback.searchParams.set('renderer', 'webgl');
@@ -765,10 +706,10 @@
               const text = 'WebGPU failed: ' + String(reason && (reason.stack || reason.message) || reason).slice(0, 900);
               const note = document.createElement('div');
               note.style.cssText = 'position:fixed;inset:0;z-index:2147483647;background:#111;color:#fff;font:14px/1.4 monospace;padding:16px;white-space:pre-wrap;word-break:break-word;overflow:auto';
-              note.textContent = text + '\n\nTap to copy. Switching to WebGL in 20 seconds...';
+              note.textContent = text + '\n\nTap to copy. Switching to WebGL in 60 seconds...';
               note.addEventListener('click', () => { try { navigator.clipboard.writeText(text); } catch (e) {} });
               document.body.appendChild(note);
-              setTimeout(() => location.replace(fallback), 20000);
+              setTimeout(() => location.replace(fallback), 60000);
               return;
             }
             location.replace(fallback);
